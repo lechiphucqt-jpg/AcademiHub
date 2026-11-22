@@ -6,6 +6,14 @@ interface SafeMarkdownProps {
   onApplyHtmlBlock?: (htmlCode: string) => void;
 }
 
+function extractYouTubeId(url: string): string | null {
+  const trimmed = url.trim();
+  const match = trimmed.match(
+    /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i
+  );
+  return match ? match[1] : null;
+}
+
 function renderInline(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
@@ -134,6 +142,24 @@ export default function SafeMarkdown({ content, onApplyHtmlBlock }: SafeMarkdown
     // Horizontal rule
     if (/^---+$/.test(line.trim())) {
       blocks.push(<hr key={`hr-${i}`} className="my-4 border-slate-200 dark:border-slate-800" />);
+      i += 1;
+      continue;
+    }
+
+    // YouTube auto-embed
+    const ytId = extractYouTubeId(line);
+    if (ytId && (line.trim().startsWith('http://') || line.trim().startsWith('https://') || line.trim().startsWith('<iframe'))) {
+      blocks.push(
+        <div key={`yt-${i}`} className="my-4 aspect-video w-full max-w-3xl rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-black">
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${ytId}`}
+            title="YouTube video player"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
+      );
       i += 1;
       continue;
     }

@@ -479,7 +479,9 @@ export default function InteractiveViewer({
               key={`presentation-${iframeKey}-${presentationFitWidth}-${presentationZoom}`}
               title={`Toàn màn hình chiếu: ${content.title}`}
               srcDoc={presentationSrcDoc}
-              sandbox="allow-scripts allow-forms allow-modals"
+              sandbox="allow-scripts allow-forms allow-modals allow-presentation allow-popups allow-popups-to-escape-sandbox"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+              allowFullScreen
               className="w-full h-full flex-1 border-0 m-0 p-0 block bg-white"
             />
           )}
@@ -990,7 +992,9 @@ export default function InteractiveViewer({
                     key={iframeKey}
                     title={`Trình xem tương tác: ${content.title}`}
                     srcDoc={draftHtml}
-                    sandbox="allow-scripts allow-forms allow-modals"
+                    sandbox="allow-scripts allow-forms allow-modals allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                    allowFullScreen
                     className="w-full flex-1 min-h-[560px] bg-white border-0"
                   />
                 </div>
