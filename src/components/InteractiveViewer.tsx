@@ -309,8 +309,8 @@ export default function InteractiveViewer({
       onNotify('Vui lòng chọn tệp có phần mở rộng .html hoặc .htm.', 'error');
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      onNotify('Tệp HTML vượt quá dung lượng khuyến nghị 2 MB.', 'error');
+    if (file.size > 250 * 1024 * 1024) {
+      onNotify('Tệp HTML vượt quá giới hạn tối đa 250 MB.', 'error');
       return;
     }
     const text = await file.text();
@@ -322,7 +322,7 @@ export default function InteractiveViewer({
     });
     setIframeKey((k) => k + 1);
     setShowAudit(true);
-    onNotify(`Đã nạp "${file.name}" và chạy kiểm tra tương thích Sandbox.`, 'success');
+    onNotify(`Đã nạp "${file.name}" (${formatBytes(file.size)}) và chạy kiểm tra tương thích Sandbox.`, 'success');
   };
 
   const handleDownloadHtml = () => {

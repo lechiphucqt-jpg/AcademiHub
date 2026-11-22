@@ -586,7 +586,7 @@ export default function PortabilityConsole({
               Chọn tệp gói dữ liệu (.zip hoặc .json)
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              Hỗ trợ tối đa 25 MB · Tự động giải nén manifest, HTML và cấu hình thương hiệu
+              Hỗ trợ gói dữ liệu lớn lên đến 300 MB · Tự động giải nén manifest, HTML và cấu hình thương hiệu
             </div>
           </button>
 

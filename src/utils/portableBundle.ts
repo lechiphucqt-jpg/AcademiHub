@@ -271,8 +271,8 @@ export async function parseImportedFile(file: File): Promise<{
   stats: BundleStats;
   sourceType: 'zip' | 'json';
 }> {
-  if (file.size > 25 * 1024 * 1024) {
-    throw new Error('Dung lượng tệp vượt quá giới hạn an toàn 25 MB.');
+  if (file.size > 300 * 1024 * 1024) {
+    throw new Error('Dung lượng tệp vượt quá giới hạn an toàn 300 MB.');
   }
 
   const lowerName = file.name.toLowerCase();

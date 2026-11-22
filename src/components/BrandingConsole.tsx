@@ -26,8 +26,8 @@ export default function BrandingConsole({
       onNotify('Vui lòng chọn ảnh định dạng PNG, JPG, WebP hoặc GIF.', 'error');
       return;
     }
-    if (file.size > 512 * 1024) {
-      onNotify('Logo thương hiệu nên có dung lượng dưới 512 KB để tối ưu tốc độ Local-First.', 'error');
+    if (file.size > 10 * 1024 * 1024) {
+      onNotify('Logo thương hiệu nên có dung lượng dưới 10 MB để tối ưu hiệu năng.', 'error');
       return;
     }
 

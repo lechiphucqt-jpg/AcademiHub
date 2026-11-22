@@ -103,8 +103,8 @@ export default function ContentFormModal({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      onNotify('Tệp HTML vượt quá giới hạn 2 MB.', 'error');
+    if (file.size > 250 * 1024 * 1024) {
+      onNotify('Tệp HTML vượt quá giới hạn tối đa 250 MB.', 'error');
       return;
     }
     const text = await file.text();
@@ -113,6 +113,9 @@ export default function ContentFormModal({
     if (!title.trim()) {
       setTitle(file.name.replace(/\.html?$/i, '').replace(/[_-]+/g, ' '));
     }
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    const sizeStr = file.size >= 1024 * 1024 ? `${sizeMb} MB` : `${(file.size / 1024).toFixed(0)} KB`;
+    onNotify(`Đã nạp tệp "${file.name}" (${sizeStr}) thành công!`, 'success');
   };
 
   const handleQuickAiHtml = async () => {
