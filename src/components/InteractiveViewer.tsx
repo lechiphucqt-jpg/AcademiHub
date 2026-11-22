@@ -8,12 +8,14 @@ import {
   Eye,
   FileDown,
   FileText,
+  ImagePlus,
   Lightbulb,
   Maximize2,
   Minimize2,
   Monitor,
   Presentation,
   RefreshCw,
+  Save,
   Share2,
   ShieldCheck,
   Smartphone,
@@ -90,6 +92,8 @@ export default function InteractiveViewer({
   const [isExporting, setIsExporting] = useState(false);
 
   const htmlUploadRef = useRef<HTMLInputElement | null>(null);
+  const normalIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const presentationIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const enterPresentationMode = async () => {
     setIsPresentationMode(true);
@@ -301,6 +305,65 @@ export default function InteractiveViewer({
     onNotify('Đã lưu mã nguồn HTML vào kho dữ liệu cục bộ.', 'success');
   };
 
+  const handleSaveLiveIframeHtml = () => {
+    let htmlToSave = draftHtml;
+    try {
+      const activeIframe = normalIframeRef.current || presentationIframeRef.current;
+      if (activeIframe?.contentDocument?.documentElement) {
+        const clone = activeIframe.contentDocument.documentElement.cloneNode(true) as HTMLElement;
+        const injectedStyle = clone.querySelector('#academic-presentation-fit-engine');
+        if (injectedStyle) injectedStyle.remove();
+        htmlToSave = '<!DOCTYPE html>\n' + clone.outerHTML;
+        setDraftHtml(htmlToSave);
+      }
+    } catch {
+      // Fallback to current draftHtml
+    }
+
+    onUpdateContent(book.id, unit.id, lesson.id, content.id, {
+      htmlContent: htmlToSave,
+      updatedAt: new Date().toISOString(),
+    });
+    onNotify('Đã lưu thành công toàn bộ hình ảnh và nội dung mới vào kho dữ liệu bài học!', 'success');
+  };
+
+  // Tự động đồng bộ khi Thầy/Cô bấm "Lưu hình ảnh vĩnh viễn (Embedded vào file)" bên trong trang sách
+  useEffect(() => {
+    const syncFromIframe = () => {
+      try {
+        const iframe = normalIframeRef.current || presentationIframeRef.current;
+        if (!iframe) return;
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+
+        const allBtns = Array.from(doc.querySelectorAll('button, a'));
+        const saveBtn = allBtns.find(
+          (b) => b.textContent?.includes('Lưu hình ảnh vĩnh viễn') || b.textContent?.includes('Embedded vào file')
+        );
+        if (saveBtn) {
+          saveBtn.addEventListener('click', () => {
+            setTimeout(() => {
+              handleSaveLiveIframeHtml();
+            }, 600);
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const activeIframe = normalIframeRef.current || presentationIframeRef.current;
+    if (activeIframe) {
+      activeIframe.addEventListener('load', syncFromIframe);
+      if (activeIframe.contentDocument?.readyState === 'complete') {
+        syncFromIframe();
+      }
+    }
+    return () => {
+      activeIframe?.removeEventListener('load', syncFromIframe);
+    };
+  }, [iframeKey, draftHtml]);
+
   const handleUploadHtmlFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -455,6 +518,14 @@ export default function InteractiveViewer({
 
           <button
             type="button"
+            onClick={handleSaveLiveIframeHtml}
+            title="Lưu các ảnh vừa chèn vào Hub"
+            className="p-2 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white backdrop-blur-md shadow-2xl border border-white/20 transition-all cursor-pointer"
+          >
+            <Save className="w-4 h-4 text-emerald-400" />
+          </button>
+          <button
+            type="button"
             onClick={() => setIframeKey((k) => k + 1)}
             title="Tải lại trang sách"
             className="p-2 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white backdrop-blur-md shadow-2xl border border-white/20 transition-all cursor-pointer"
@@ -476,10 +547,10 @@ export default function InteractiveViewer({
         <div className="w-full h-full flex-1 flex flex-col m-0 p-0 overflow-hidden bg-white">
           {content.type === 'interactive-html' && (
             <iframe
+              ref={presentationIframeRef}
               key={`presentation-${iframeKey}-${presentationFitWidth}-${presentationZoom}`}
               title={`Toàn màn hình chiếu: ${content.title}`}
               srcDoc={presentationSrcDoc}
-              sandbox="allow-scripts allow-forms allow-modals allow-presentation allow-popups allow-popups-to-escape-sandbox"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
               allowFullScreen
               className="w-full h-full flex-1 border-0 m-0 p-0 block bg-white"
@@ -863,6 +934,16 @@ export default function InteractiveViewer({
 
               <button
                 type="button"
+                onClick={handleSaveLiveIframeHtml}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer whitespace-nowrap transition-all"
+                title="Lưu lại tất cả hình ảnh Thầy/Cô vừa chèn hoặc chỉnh sửa trực tiếp trên trang sách vào Hub"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Lưu ảnh đã chèn</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleAiOptimizeHtml}
                 disabled={isOptimizing}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg hub-accent-bg transition-colors cursor-pointer whitespace-nowrap disabled:opacity-60"
@@ -989,10 +1070,10 @@ export default function InteractiveViewer({
                   className={`${viewportWidthClass} w-full flex-1 min-h-[560px] rounded-xl border border-slate-200 dark:border-slate-800 bg-white overflow-hidden shadow-xs flex flex-col transition-all`}
                 >
                   <iframe
+                    ref={normalIframeRef}
                     key={iframeKey}
                     title={`Trình xem tương tác: ${content.title}`}
                     srcDoc={draftHtml}
-                    sandbox="allow-scripts allow-forms allow-modals allow-presentation allow-popups allow-popups-to-escape-sandbox"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                     allowFullScreen
                     className="w-full flex-1 min-h-[560px] bg-white border-0"
