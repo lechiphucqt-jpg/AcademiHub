@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowLeftRight,
   CheckCircle2,
   Code2,
   Download,
@@ -21,6 +22,8 @@ import {
   Tv,
   Upload,
   XCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import type { Book, DetailedContent, Lesson, QuizQuestion, SelectionPath, Unit } from '../types/academic';
 import { inspectHtmlCompatibility } from '../utils/htmlInspector';
@@ -69,6 +72,8 @@ export default function InteractiveViewer({
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [presentationFitWidth, setPresentationFitWidth] = useState(true);
+  const [presentationZoom, setPresentationZoom] = useState(100);
   const [showAudit, setShowAudit] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -223,6 +228,70 @@ export default function InteractiveViewer({
     return inspectHtmlCompatibility(draftHtml);
   }, [content.type, draftHtml]);
 
+  const presentationSrcDoc = useMemo(() => {
+    if (content.type !== 'interactive-html' || !draftHtml) return draftHtml;
+
+    const fitWidthCss = presentationFitWidth
+      ? `
+        /* Khắc phục khoảng trống 2 bên màn chiếu: Tự động tràn viền 100% */
+        html, body {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 10px !important;
+          padding-right: 10px !important;
+          box-sizing: border-box !important;
+        }
+        body > div, body > main, body > section, body > article {
+          max-width: 100% !important;
+          width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+        .container, .container-fluid, .wrapper, .page, .book-page,
+        [class*="max-w-"], [class*="container"],
+        div[style*="max-width"], section[style*="max-width"], main[style*="max-width"], article[style*="max-width"] {
+          max-width: 100% !important;
+          width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+      `
+      : '';
+
+    const zoomCss = presentationZoom !== 100
+      ? `
+        body {
+          zoom: ${presentationZoom / 100} !important;
+          transform-origin: top center !important;
+        }
+        @supports not (zoom: 1) {
+          body {
+            transform: scale(${presentationZoom / 100});
+            transform-origin: top center;
+          }
+        }
+      `
+      : '';
+
+    if (!fitWidthCss && !zoomCss) return draftHtml;
+
+    const enhancerStyle = `
+      <style id="academic-presentation-fit-engine">
+        ${fitWidthCss}
+        ${zoomCss}
+      </style>
+    `;
+
+    if (draftHtml.includes('</head>')) {
+      return draftHtml.replace('</head>', `${enhancerStyle}\n</head>`);
+    } else if (draftHtml.includes('<body')) {
+      return draftHtml.replace('<body', `${enhancerStyle}\n<body`);
+    }
+    return `${enhancerStyle}\n${draftHtml}`;
+  }, [content.type, draftHtml, presentationFitWidth, presentationZoom]);
+
   const handleSaveHtml = () => {
     onUpdateContent(book.id, unit.id, lesson.id, content.id, {
       htmlContent: draftHtml,
@@ -312,11 +381,78 @@ export default function InteractiveViewer({
     return (
       <div className="fixed inset-0 z-[999999] w-screen h-screen bg-white dark:bg-slate-950 flex flex-col m-0 p-0 overflow-hidden select-none">
         {/* Floating presentation toolbar: faint by default, reveals smoothly on hover */}
-        <div className="absolute top-3 right-4 z-[1000000] flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity duration-200">
-          <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 text-white text-xs font-semibold backdrop-blur-md shadow-2xl border border-white/10 pointer-events-none">
+        <div className="absolute top-3 right-4 z-[1000000] flex flex-wrap items-center gap-2 opacity-35 hover:opacity-100 transition-opacity duration-200">
+          <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 text-white text-xs font-semibold backdrop-blur-md shadow-2xl border border-white/10 pointer-events-none">
             <Tv className="w-3.5 h-3.5 text-amber-400" />
-            <span className="truncate max-w-xs">{content.title}</span>
+            <span className="truncate max-w-[200px]">{content.title}</span>
           </span>
+
+          {content.type === 'interactive-html' && (
+            <>
+              {/* Nút Tràn viền 100% (Fit Width) */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !presentationFitWidth;
+                  setPresentationFitWidth(next);
+                  onNotify(
+                    next
+                      ? 'Đã BẬT chế độ Tràn viền: Trang sách sẽ tự động giãn đầy 100% bề ngang màn chiếu.'
+                      : 'Đã TẮT chế độ Tràn viền: Trang sách hiển thị theo tỷ lệ gốc.',
+                    'info'
+                  );
+                }}
+                title={presentationFitWidth ? 'Đang BẬT tràn viền 100% (Click để chuyển về khung gốc)' : 'Bật tràn viền 100% để lấp đầy 2 bên'}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold backdrop-blur-md shadow-2xl border transition-all cursor-pointer ${
+                  presentationFitWidth
+                    ? 'bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400/40 ring-1 ring-emerald-400/50'
+                    : 'bg-slate-900/85 hover:bg-slate-900 text-slate-300 border-white/20'
+                }`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span>{presentationFitWidth ? 'Tràn viền: BẬT' : 'Tràn viền: TẮT'}</span>
+              </button>
+
+              {/* Bộ điều khiển Phóng to / Thu nhỏ Zoom */}
+              <div className="flex items-center rounded-xl bg-slate-900/85 backdrop-blur-md shadow-2xl border border-white/20 p-0.5 text-xs text-white">
+                <button
+                  type="button"
+                  onClick={() => setPresentationZoom((z) => Math.max(70, z - 15))}
+                  title="Thu nhỏ tỷ lệ sách (A-)"
+                  className="p-1.5 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPresentationZoom(100)}
+                  title="Đặt lại mức phóng to chuẩn 100%"
+                  className="px-2 py-1 font-mono font-bold hover:bg-white/10 rounded-md cursor-pointer text-amber-300 tabular-nums"
+                >
+                  {presentationZoom}%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPresentationZoom((z) => Math.min(220, z + 15))}
+                  title="Phóng to tỷ lệ sách (A+)"
+                  className="p-1.5 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPresentationZoom(presentationZoom === 135 ? 100 : 135)}
+                  title="Phóng to 135% vừa vặn cho máy chiếu"
+                  className={`px-2 py-1 text-[11px] font-medium rounded-md cursor-pointer border-l border-white/10 transition-colors ${
+                    presentationZoom === 135 ? 'text-amber-300 font-bold bg-white/10' : 'text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {presentationZoom === 135 ? 'Chuẩn' : 'Vừa chiếu'}
+                </button>
+              </div>
+            </>
+          )}
+
           <button
             type="button"
             onClick={() => setIframeKey((k) => k + 1)}
@@ -340,9 +476,9 @@ export default function InteractiveViewer({
         <div className="w-full h-full flex-1 flex flex-col m-0 p-0 overflow-hidden bg-white">
           {content.type === 'interactive-html' && (
             <iframe
-              key={`presentation-${iframeKey}`}
+              key={`presentation-${iframeKey}-${presentationFitWidth}-${presentationZoom}`}
               title={`Toàn màn hình chiếu: ${content.title}`}
-              srcDoc={draftHtml}
+              srcDoc={presentationSrcDoc}
               sandbox="allow-scripts allow-forms allow-modals"
               className="w-full h-full flex-1 border-0 m-0 p-0 block bg-white"
             />
