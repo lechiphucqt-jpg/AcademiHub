@@ -1,10 +1,9 @@
-import type { Book, BrandingConfig, HubState } from '../types/academic';
+import type { Book, BrandingConfig, HubState, PortableManifest } from '../types/academic';
+import { HUB_SCHEMA_VERSION } from '../data/seedData';
 import {
   computeCurriculumStats,
   validateAndSanitizeBranding,
   validateBooksStrictHierarchy,
-  HUB_SCHEMA_VERSION,
-  type PortableManifest,
 } from './portableBundle';
 import { sanitizeSlug } from './storage';
 

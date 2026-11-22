@@ -4,6 +4,9 @@ import { DEFAULT_BRANDING, HUB_SCHEMA_VERSION } from '../data/seedData';
 import { isSafeImageSrc } from './htmlInspector';
 import { sanitizeSlug } from './storage';
 
+export { HUB_SCHEMA_VERSION };
+export type { PortableManifest };
+
 export interface BundleStats {
   bookCount: number;
   unitCount: number;
