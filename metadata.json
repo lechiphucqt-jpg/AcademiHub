@@ -1,0 +1,6 @@
+{
+  "name": "Interactive Academic Hub",
+  "description": "Hệ sinh thái quản lý sách học thuật tương tác theo chuẩn Book > Unit > Lesson > Content, trình xem HTML5 cô lập, trợ lý kiến trúc EdTech AI, tùy biến thương hiệu và đồng bộ dữ liệu Local-First.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
