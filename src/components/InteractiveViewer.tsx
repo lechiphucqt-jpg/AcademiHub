@@ -18,6 +18,7 @@ import {
   Smartphone,
   Sparkles,
   Tablet,
+  Tv,
   Upload,
   XCircle,
 } from 'lucide-react';
@@ -67,6 +68,7 @@ export default function InteractiveViewer({
   const [viewMode, setViewMode] = useState<EditorViewMode>('preview');
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -83,6 +85,49 @@ export default function InteractiveViewer({
   const [isExporting, setIsExporting] = useState(false);
 
   const htmlUploadRef = useRef<HTMLInputElement | null>(null);
+
+  const enterPresentationMode = async () => {
+    setIsPresentationMode(true);
+    try {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // Fallback: CSS fixed-inset handles full coverage
+    }
+    onNotify('Đã bật chế độ Toàn màn hình chiếu. Nhấn phím Esc hoặc nút ở góc để thoát.', 'info');
+  };
+
+  const exitPresentationMode = async () => {
+    setIsPresentationMode(false);
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!isPresentationMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        exitPresentationMode();
+      }
+    };
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && isPresentationMode) {
+        setIsPresentationMode(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, [isPresentationMode]);
 
   const handleQuickExportExamDocx = async () => {
     const questions: QuizQuestion[] = [];
@@ -263,6 +308,190 @@ export default function InteractiveViewer({
 
   const hasUnsavedHtml = content.type === 'interactive-html' && draftHtml !== (content.htmlContent ?? '');
 
+  if (isPresentationMode) {
+    return (
+      <div className="fixed inset-0 z-[999999] w-screen h-screen bg-white dark:bg-slate-950 flex flex-col m-0 p-0 overflow-hidden select-none">
+        {/* Floating presentation toolbar: faint by default, reveals smoothly on hover */}
+        <div className="absolute top-3 right-4 z-[1000000] flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity duration-200">
+          <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 text-white text-xs font-semibold backdrop-blur-md shadow-2xl border border-white/10 pointer-events-none">
+            <Tv className="w-3.5 h-3.5 text-amber-400" />
+            <span className="truncate max-w-xs">{content.title}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setIframeKey((k) => k + 1)}
+            title="Tải lại trang sách"
+            className="p-2 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white backdrop-blur-md shadow-2xl border border-white/20 transition-all cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={exitPresentationMode}
+            title="Thoát toàn màn hình chiếu (Phím Esc)"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white backdrop-blur-md shadow-2xl text-xs font-bold border border-white/20 transition-all cursor-pointer group"
+          >
+            <Minimize2 className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+            <span>Thoát màn hình chiếu (Esc)</span>
+          </button>
+        </div>
+
+        {/* 100% Full-bleed content display: no margins, no padding, no outer UI */}
+        <div className="w-full h-full flex-1 flex flex-col m-0 p-0 overflow-hidden bg-white">
+          {content.type === 'interactive-html' && (
+            <iframe
+              key={`presentation-${iframeKey}`}
+              title={`Toàn màn hình chiếu: ${content.title}`}
+              srcDoc={draftHtml}
+              sandbox="allow-scripts allow-forms allow-modals"
+              className="w-full h-full flex-1 border-0 m-0 p-0 block bg-white"
+            />
+          )}
+
+          {content.type === 'game' && (
+            <div className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-8 flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+              <div className="w-full max-w-5xl">
+                <InteractiveGameEngine
+                  lessonTitle={lesson.title}
+                  questions={content.quizQuestions || []}
+                  onNotify={onNotify}
+                />
+              </div>
+            </div>
+          )}
+
+          {content.type === 'simulation' && (
+            <div className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-8 flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+              <div className="w-full max-w-5xl">
+                <StemSimulationLab
+                  initialType={content.simulationType || 'physics-projectile'}
+                  onNotify={onNotify}
+                />
+              </div>
+            </div>
+          )}
+
+          {content.type === 'quiz' && (
+            <div className="w-full h-full flex-1 overflow-y-auto p-6 sm:p-12 flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+              <div className="max-w-3xl w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-2xl space-y-6">
+                <div className="space-y-1 pb-4 border-b border-slate-200 dark:border-slate-800">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Bài kiểm tra tương tác · {(content.quizQuestions ?? []).length} câu hỏi
+                  </p>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{content.title}</h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{content.description}</p>
+                </div>
+
+                {(content.quizQuestions ?? []).map((q, qIdx) => {
+                  const picked = quizAnswers[q.id];
+                  const isCorrect = picked === q.correctIndex;
+                  return (
+                    <div key={q.id} className="space-y-3">
+                      <div className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                        Câu {qIdx + 1}. {q.question}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {q.options.map((opt, optIdx) => {
+                          const selected = picked === optIdx;
+                          let styleCls =
+                            'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 hover:border-slate-400';
+                          if (quizSubmitted) {
+                            if (optIdx === q.correctIndex) {
+                              styleCls =
+                                'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 font-medium';
+                            } else if (selected && optIdx !== q.correctIndex) {
+                              styleCls =
+                                'border-red-500 bg-red-50 dark:bg-red-950/50 text-red-900 dark:text-red-200';
+                            }
+                          } else if (selected) {
+                            styleCls = 'hub-accent-border hub-accent-soft-bg hub-accent-text font-medium';
+                          }
+                          return (
+                            <button
+                              key={optIdx}
+                              type="button"
+                              disabled={quizSubmitted}
+                              onClick={() => setQuizAnswers((prev) => ({ ...prev, [q.id]: optIdx }))}
+                              className={`text-left px-4 py-3 rounded-xl border text-sm transition-colors cursor-pointer disabled:cursor-default ${styleCls}`}
+                            >
+                              <span className="font-mono text-xs mr-2 opacity-70">
+                                {String.fromCharCode(65 + optIdx)}.
+                              </span>
+                              <span>{opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {quizSubmitted && (
+                        <div className="text-xs p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                          <span
+                            className={
+                              isCorrect
+                                ? 'font-semibold text-emerald-700 dark:text-emerald-400'
+                                : 'font-semibold text-red-700 dark:text-red-400'
+                            }
+                          >
+                            {isCorrect ? 'Chính xác: ' : 'Cần xem lại: '}
+                          </span>
+                          {q.explanation}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  {quizSubmitted ? (
+                    <div className="text-base font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                      Kết quả:{' '}
+                      {(content.quizQuestions ?? []).filter((q) => quizAnswers[q.id] === q.correctIndex).length} /{' '}
+                      {(content.quizQuestions ?? []).length} câu đúng
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                      Đã chọn {Object.keys(quizAnswers).length} / {(content.quizQuestions ?? []).length} câu
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {quizSubmitted ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuizAnswers({});
+                          setQuizSubmitted(false);
+                        }}
+                        className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      >
+                        Làm lại bài kiểm tra
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setQuizSubmitted(true)}
+                        className="px-4 py-2 text-xs font-semibold rounded-lg hub-accent-bg cursor-pointer"
+                      >
+                        Nộp bài & Chấm điểm
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {content.type === 'reading' && (
+            <div className="w-full h-full flex-1 overflow-y-auto p-6 sm:p-12 flex justify-center bg-slate-50 dark:bg-slate-900">
+              <div className="max-w-4xl w-full p-8 sm:p-12 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{content.title}</h2>
+                <SafeMarkdown content={draftMarkdown || 'Chưa có nội dung bài đọc.'} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={
@@ -313,6 +542,16 @@ export default function InteractiveViewer({
 
             {/* Pedagogy Quick Exports & Socratic Tutor */}
             <div className="flex flex-wrap items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={enterPresentationMode}
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer transition-all"
+                title="Chiếu toàn màn hình trang sách (phóng to tối đa, không thanh công cụ, chuyên dùng cho máy chiếu)"
+              >
+                <Tv className="w-3.5 h-3.5" />
+                <span>Toàn màn hình chiếu</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowSocraticTutor(true)}
@@ -514,8 +753,17 @@ export default function InteractiveViewer({
 
               <button
                 type="button"
+                onClick={enterPresentationMode}
+                title="Toàn màn hình chiếu (Máy chiếu lớp học)"
+                className="p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 cursor-pointer"
+              >
+                <Tv className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsFullscreen((f) => !f)}
-                title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}
+                title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình (Giao diện)'}
                 className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
