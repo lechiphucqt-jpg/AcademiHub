@@ -13,6 +13,7 @@ import {
   Maximize2,
   Minimize2,
   Monitor,
+  Pencil,
   Presentation,
   RefreshCw,
   Save,
@@ -34,6 +35,7 @@ import SafeMarkdown from './SafeMarkdown';
 import InteractiveGameEngine from './InteractiveGameEngine';
 import StemSimulationLab from './StemSimulationLab';
 import SocraticTutorDrawer from './SocraticTutorDrawer';
+import type { EditTarget } from './EditNodeModal';
 import {
   exportExamDocx,
   exportLessonPlanDocx,
@@ -55,6 +57,7 @@ interface InteractiveViewerProps {
     patch: Partial<DetailedContent>
   ) => void;
   onNotify: (message: string, tone?: 'success' | 'error' | 'info') => void;
+  onEditNode?: (target: EditTarget) => void;
 }
 
 type ViewportSize = 'desktop' | 'tablet' | 'mobile';
@@ -68,6 +71,7 @@ export default function InteractiveViewer({
   onNavigate,
   onUpdateContent,
   onNotify,
+  onEditNode,
 }: InteractiveViewerProps) {
   const [viewport, setViewport] = useState<ViewportSize>('desktop');
   const [viewMode, setViewMode] = useState<EditorViewMode>('preview');
@@ -743,6 +747,23 @@ export default function InteractiveViewer({
 
             <div className="flex flex-wrap items-baseline gap-3">
               <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{content.title}</h1>
+              {onEditNode && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onEditNode({
+                      level: 'content',
+                      ids: { bookId: book.id, unitId: unit.id, lessonId: lesson.id, contentId: content.id },
+                      initialTitle: content.title,
+                      initialMinutes: content.estimatedMinutes,
+                    })
+                  }
+                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Sửa tên học liệu này"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
               <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                 {content.estimatedMinutes} phút
                 {auditReport ? ` · ${formatBytes(auditReport.byteSize)}` : ''}

@@ -1,17 +1,26 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   Archive,
+  Check,
   CheckCircle2,
   Download,
   FileDown,
   FileJson,
   FileText,
+  FolderCheck,
+  FolderDown,
+  FolderOpen,
   FolderSync,
+  FolderUp,
   GraduationCap,
   HardDrive,
+  Laptop,
   Presentation,
   RotateCcw,
   Share2,
+  ShieldCheck,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import type { Book, HubState, QuizQuestion } from '../types/academic';
@@ -24,7 +33,19 @@ import {
   saveBundleToLocalDirectory,
   triggerBlobDownload,
 } from '../utils/portableBundle';
-import { estimateStateByteSize, formatBytes, supportsDirectoryPicker } from '../utils/storage';
+import {
+  clearSavedDirectoryHandle,
+  estimateStateByteSize,
+  formatBytes,
+  saveSavedDirectoryHandle,
+  supportsDirectoryPicker,
+} from '../utils/storage';
+import {
+  isDirectoryPickerSupported,
+  pickLocalDirectory,
+  readStateFromDirectory,
+  writeStateToDirectory,
+} from '../utils/directoryStorage';
 import {
   exportExamDocx,
   exportLessonPlanDocx,
@@ -34,6 +55,13 @@ import {
   exportScorm12Zip,
 } from '../utils/pedagogyExport';
 
+export interface DirectoryStateInfo {
+  handle: FileSystemDirectoryHandle | null;
+  name: string | null;
+  lastSyncAt: string | null;
+  autoSync: boolean;
+}
+
 interface PortabilityConsoleProps {
   hubState: HubState;
   storageEngine: 'IndexedDB' | 'localStorage';
@@ -41,6 +69,8 @@ interface PortabilityConsoleProps {
   onImportState: (imported: HubState, mode: 'replace' | 'merge') => void;
   onResetToSeed: () => void;
   onNotify: (message: string, tone?: 'success' | 'error' | 'info') => void;
+  directoryInfo: DirectoryStateInfo;
+  onUpdateDirectoryInfo: (updater: DirectoryStateInfo | ((prev: DirectoryStateInfo) => DirectoryStateInfo)) => void;
 }
 
 export default function PortabilityConsole({
@@ -50,9 +80,17 @@ export default function PortabilityConsole({
   onImportState,
   onResetToSeed,
   onNotify,
+  directoryInfo,
+  onUpdateDirectoryInfo,
 }: PortabilityConsoleProps) {
   const [exportingZip, setExportingZip] = useState(false);
   const [syncingDir, setSyncingDir] = useState(false);
+  const [isProcessingDir, setIsProcessingDir] = useState(false);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [folderActionPending, setFolderActionPending] = useState<{
+    handle: FileSystemDirectoryHandle;
+    name: string;
+  } | null>(null);
   const [pendingImport, setPendingImport] = useState<{
     filename: string;
     state: HubState;
@@ -257,18 +295,185 @@ export default function PortabilityConsole({
   };
 
   const handleDirectFolderSync = async () => {
-    setSyncingDir(true);
+    if (directoryInfo.handle) {
+      handleSyncCurrentDirectory();
+      return;
+    }
+    handleSelectDirectory();
+  };
+
+  const handleSelectDirectory = async () => {
+    setIsProcessingDir(true);
     try {
-      const { directoryName, filesWritten } = await saveBundleToLocalDirectory(hubState);
-      onNotify(`Đã ghi trực tiếp ${filesWritten} tệp theo đúng cấu trúc cây vào thư mục "${directoryName}".`, 'success');
+      const { handle, name, hasExistingManifest } = await pickLocalDirectory();
+
+      if (hasExistingManifest) {
+        setFolderActionPending({ handle, name });
+        setShowFolderModal(true);
+        return;
+      }
+
+      const result = await writeStateToDirectory(handle, hubState);
+      const now = new Date().toISOString();
+      const newInfo: DirectoryStateInfo = {
+        handle,
+        name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      };
+      await saveSavedDirectoryHandle(handle, {
+        name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      });
+      onUpdateDirectoryInfo(newInfo);
+      onNotify(
+        `Đã liên kết và ghi thành công ${result.filesWritten} tệp vào thư mục "${name}". Tệp Chay_Ung_Dung_Offline.html đã sẵn sàng!`,
+        'success'
+      );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Không thể ghi vào thư mục cục bộ.';
+      const msg = err instanceof Error ? err.message : 'Không thể chọn thư mục.';
       if (!msg.toLowerCase().includes('abort')) {
-        onNotify(msg, 'info');
+        onNotify(msg, 'error');
       }
     } finally {
-      setSyncingDir(false);
+      setIsProcessingDir(false);
     }
+  };
+
+  const handleLoadFromExistingFolder = async () => {
+    if (!folderActionPending) return;
+    setIsProcessingDir(true);
+    try {
+      const result = await readStateFromDirectory(folderActionPending.handle);
+      onImportState(result.state, 'replace');
+      const now = new Date().toISOString();
+      const newInfo: DirectoryStateInfo = {
+        handle: folderActionPending.handle,
+        name: folderActionPending.name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      };
+      await saveSavedDirectoryHandle(folderActionPending.handle, {
+        name: folderActionPending.name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      });
+      onUpdateDirectoryInfo(newInfo);
+      setShowFolderModal(false);
+      setFolderActionPending(null);
+      onNotify(
+        `Đã nạp thành công ${result.bookCount} sách và ${result.lessonCount} bài học từ thư mục "${folderActionPending.name}"!`,
+        'success'
+      );
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Lỗi khi đọc dữ liệu từ thư mục.', 'error');
+    } finally {
+      setIsProcessingDir(false);
+    }
+  };
+
+  const handleOverwriteFolderFromApp = async () => {
+    if (!folderActionPending) return;
+    setIsProcessingDir(true);
+    try {
+      const result = await writeStateToDirectory(folderActionPending.handle, hubState);
+      const now = new Date().toISOString();
+      const newInfo: DirectoryStateInfo = {
+        handle: folderActionPending.handle,
+        name: folderActionPending.name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      };
+      await saveSavedDirectoryHandle(folderActionPending.handle, {
+        name: folderActionPending.name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      });
+      onUpdateDirectoryInfo(newInfo);
+      setShowFolderModal(false);
+      setFolderActionPending(null);
+      onNotify(
+        `Đã ghi đè toàn bộ dữ liệu hiện tại (${result.filesWritten} tệp) vào thư mục "${folderActionPending.name}".`,
+        'success'
+      );
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Lỗi khi ghi vào thư mục.', 'error');
+    } finally {
+      setIsProcessingDir(false);
+    }
+  };
+
+  const handleSyncCurrentDirectory = async () => {
+    if (!directoryInfo.handle) {
+      handleSelectDirectory();
+      return;
+    }
+    setIsProcessingDir(true);
+    try {
+      const result = await writeStateToDirectory(directoryInfo.handle, hubState);
+      const now = new Date().toISOString();
+      onUpdateDirectoryInfo((prev) => ({ ...prev, lastSyncAt: now }));
+      await saveSavedDirectoryHandle(directoryInfo.handle, {
+        name: directoryInfo.name || directoryInfo.handle.name,
+        lastSyncAt: now,
+        autoSync: directoryInfo.autoSync,
+      });
+      onNotify(
+        `Đã ghi thành công ${result.filesWritten} tệp vào thư mục "${directoryInfo.name}". Tệp Chay_Ung_Dung_Offline.html đã được cập nhật mới nhất!`,
+        'success'
+      );
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Lỗi khi đồng bộ vào thư mục.', 'error');
+    } finally {
+      setIsProcessingDir(false);
+    }
+  };
+
+  const handleReadCurrentDirectory = async () => {
+    if (!directoryInfo.handle) {
+      handleSelectDirectory();
+      return;
+    }
+    setIsProcessingDir(true);
+    try {
+      const result = await readStateFromDirectory(directoryInfo.handle);
+      onImportState(result.state, 'replace');
+      const now = new Date().toISOString();
+      onUpdateDirectoryInfo((prev) => ({ ...prev, lastSyncAt: now }));
+      onNotify(
+        `Đã nạp thành công ${result.bookCount} sách, ${result.lessonCount} bài học từ thư mục "${directoryInfo.name}"!`,
+        'success'
+      );
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Lỗi khi đọc từ thư mục.', 'error');
+    } finally {
+      setIsProcessingDir(false);
+    }
+  };
+
+  const handleDisconnectDirectory = async () => {
+    await clearSavedDirectoryHandle();
+    onUpdateDirectoryInfo({
+      handle: null,
+      name: null,
+      lastSyncAt: null,
+      autoSync: true,
+    });
+    onNotify('Đã ngắt kết nối thư mục PC. Dữ liệu trên ổ cứng vẫn được bảo toàn nguyên vẹn.', 'info');
+  };
+
+  const handleToggleAutoSync = async () => {
+    const nextVal = !directoryInfo.autoSync;
+    onUpdateDirectoryInfo((prev) => ({ ...prev, autoSync: nextVal }));
+    if (directoryInfo.handle && directoryInfo.name) {
+      await saveSavedDirectoryHandle(directoryInfo.handle, {
+        name: directoryInfo.name,
+        lastSyncAt: directoryInfo.lastSyncAt,
+        autoSync: nextVal,
+      });
+    }
+    onNotify(nextVal ? 'Đã bật tự động đồng bộ vào thư mục PC.' : 'Đã tắt tự động đồng bộ.', 'info');
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -351,6 +556,183 @@ export default function PortabilityConsole({
           <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">v{hubState.schemaVersion}</div>
         </div>
       </div>
+
+      {/* Local-First PC Directory Storage Center */}
+      <section className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-br from-white via-indigo-50/20 to-white dark:from-slate-900 dark:via-indigo-950/20 dark:to-slate-900 p-6 md:p-8 shadow-xs flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-indigo-100 dark:border-indigo-900/40">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-xs">
+                <HardDrive className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                    Kho Lưu Trữ Ổ Đĩa / Thư Mục Máy Tính Cá Nhân (Local-First)
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                    Khuyên dùng
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Chọn thư mục bất kỳ trên máy tính (ổ C:, D:, E:...) để lưu trữ toàn bộ chương trình, học liệu tương tác và chạy Offline không cần Internet.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {directoryInfo.handle ? (
+              <button
+                type="button"
+                onClick={handleSelectDirectory}
+                disabled={isProcessingDir}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>Đổi thư mục khác</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Directory Status Box */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+          {/* Col 1 & 2: Current Status */}
+          <div className="lg:col-span-2 space-y-4 flex flex-col justify-between">
+            {directoryInfo.handle ? (
+              <div className="p-5 rounded-xl border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50/60 dark:bg-emerald-950/30 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-600 text-white shrink-0">
+                      <FolderCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-emerald-800 dark:text-emerald-300 font-medium">Thư mục máy tính đang liên kết:</div>
+                      <div className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <span>📁 {directoryInfo.name}</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-full">
+                          <Check className="w-3 h-3" /> Đã kết nối
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDisconnectDirectory}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors cursor-pointer"
+                    title="Ngắt kết nối thư mục này"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-emerald-200 dark:border-emerald-900/50">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Quyền: <strong>Đọc &amp; Ghi trực tiếp</strong></span>
+                  </div>
+                  <div>
+                    Lần ghi gần nhất:{' '}
+                    <strong>
+                      {directoryInfo.lastSyncAt
+                        ? new Date(directoryInfo.lastSyncAt).toLocaleTimeString('vi-VN') +
+                          ' (' +
+                          new Date(directoryInfo.lastSyncAt).toLocaleDateString('vi-VN') +
+                          ')'
+                        : 'Vừa liên kết'}
+                    </strong>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer font-medium select-none text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={directoryInfo.autoSync}
+                      onChange={handleToggleAutoSync}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                    />
+                    <span>Tự động đồng bộ khi thay đổi</span>
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6 rounded-xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500 text-white shrink-0">
+                    <FolderOpen className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                      Chưa chọn thư mục máy tính cá nhân
+                    </div>
+                    <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+                      Dữ liệu học thuật hiện chỉ nằm tạm trong bộ nhớ trình duyệt IndexedDB. Hãy bấm nút bên dưới để chọn một thư mục trên ổ cứng máy tính (ổ C, D, E...) giúp lưu trữ trọn đời và chạy offline.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectDirectory}
+                    disabled={isProcessingDir}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <FolderSync className={`w-4 h-4 ${isProcessingDir ? 'animate-spin' : ''}`} />
+                    <span>{isProcessingDir ? 'Đang mở hộp thoại chọn thư mục...' : 'Chọn Ổ Đĩa / Thư Mục Máy Tính Cá Nhân Ngay'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Offline teaching highlight banner */}
+            <div className="p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/20 flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300">
+              <Laptop className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-bold text-slate-900 dark:text-slate-100">
+                  Tệp khởi chạy Offline độc lập: <code className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 font-mono text-[11px] text-indigo-600 dark:text-indigo-400">Chay_Ung_Dung_Offline.html</code>
+                </div>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
+                  Sau khi lưu, thư mục máy tính của thầy/cô sẽ có sẵn tệp này. Thầy/cô chỉ cần nhấp đúp vào tệp để mở bài giảng, chiếu toàn màn hình lớp học mà không cần kết nối mạng hay cài đặt phần mềm phụ trợ.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Col 3: Direct Actions */}
+          <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Thao tác với Thư mục PC
+              </div>
+
+              <button
+                type="button"
+                disabled={isProcessingDir}
+                onClick={handleSyncCurrentDirectory}
+                className="w-full py-2.5 px-3 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+              >
+                <FolderDown className={`w-4 h-4 ${isProcessingDir ? 'animate-spin' : ''}`} />
+                <span>{isProcessingDir ? 'Đang ghi dữ liệu...' : 'Ghi toàn bộ vào Thư mục PC'}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isProcessingDir}
+                onClick={handleReadCurrentDirectory}
+                className="w-full py-2 px-3 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <FolderUp className="w-4 h-4 text-emerald-600" />
+                <span>Đọc dữ liệu từ Thư mục PC</span>
+              </button>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              💡 <strong>Mẹo:</strong> Thầy/cô có thể copy toàn bộ thư mục này vào USB để mang sang máy tính lớp học sử dụng bình thường.
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Pedagogy Publishing Center */}
       <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 md:p-8 shadow-xs flex flex-col gap-6">
@@ -576,19 +958,36 @@ export default function PortabilityConsole({
             className="hidden"
           />
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full p-8 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 bg-slate-50/70 dark:bg-slate-950/60 transition-colors flex flex-col items-center justify-center gap-2 text-center cursor-pointer"
-          >
-            <Upload className="w-6 h-6 text-slate-500 dark:text-slate-400" />
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Chọn tệp gói dữ liệu (.zip hoặc .json)
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Hỗ trợ gói dữ liệu lớn lên đến 300 MB · Tự động giải nén manifest, HTML và cấu hình thương hiệu
-            </div>
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={isProcessingDir}
+              onClick={handleReadCurrentDirectory}
+              className="p-4 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30 hover:bg-emerald-100/50 transition-colors flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer disabled:opacity-50"
+            >
+              <FolderUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                Đọc từ Thư mục PC
+              </div>
+              <div className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                {directoryInfo.name ? `Từ: ${directoryInfo.name}` : 'Chọn thư mục trên máy tính'}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 bg-slate-50/70 dark:bg-slate-950/60 transition-colors flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer"
+            >
+              <Upload className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+              <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                Tải lên tệp .zip / .json
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                Gói sao lưu di động
+              </div>
+            </button>
+          </div>
 
           {pendingImport && (
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 space-y-4">
@@ -687,6 +1086,62 @@ export default function PortabilityConsole({
           </div>
         </section>
       </div>
+
+      {/* Existing Manifest Choice Modal */}
+      {showFolderModal && folderActionPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
+                <FolderCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Thư mục đã có dữ liệu Hub từ trước
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Thư mục: <strong>{folderActionPending.name}</strong>
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Hệ thống phát hiện tệp <code className="font-mono">hub-manifest.json</code> đã tồn tại trong thư mục này. Thầy/cô muốn thực hiện thao tác nào?
+            </p>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={handleLoadFromExistingFolder}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-2"
+              >
+                <FolderUp className="w-4 h-4" />
+                <span>Nạp dữ liệu từ thư mục vào App (Khuyên dùng)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOverwriteFolderFromApp}
+                className="w-full py-2.5 px-4 rounded-xl border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-700 dark:text-red-300 font-bold text-xs cursor-pointer flex items-center justify-center gap-2"
+              >
+                <FolderDown className="w-4 h-4" />
+                <span>Ghi đè dữ liệu hiện tại của App vào thư mục này</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFolderModal(false);
+                  setFolderActionPending(null);
+                }}
+                className="w-full py-2 px-4 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer text-center"
+              >
+                Hủy bỏ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

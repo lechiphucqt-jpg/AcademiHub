@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowRight, BookOpen, Code2, Dices, FileText, FolderPlus, HelpCircle, Orbit, Plus } from 'lucide-react';
+import { ArrowRight, BookOpen, Code2, Dices, FileText, FolderPlus, HelpCircle, Orbit, Pencil, Plus } from 'lucide-react';
 import type { Book, ContentType, Lesson, SelectionPath, Unit } from '../types/academic';
 import { computeCurriculumStats } from '../utils/portableBundle';
+import type { EditTarget } from './EditNodeModal';
 
 interface BookOverviewProps {
   books: Book[];
@@ -13,6 +14,7 @@ interface BookOverviewProps {
   onAddLesson: (bookId: string, unitId: string) => void;
   onAddContent: (bookId: string, unitId: string, lessonId: string) => void;
   onAskAiForLesson: (contextPrompt: string) => void;
+  onEditNode: (target: EditTarget) => void;
 }
 
 function contentTypeLabel(type: ContentType): string {
@@ -67,6 +69,7 @@ export default function BookOverview({
   onAddLesson,
   onAddContent,
   onAskAiForLesson,
+  onEditNode,
 }: BookOverviewProps) {
   const activeBook = books.find((b) => b.id === selection.bookId) ?? null;
   const activeUnit: Unit | null = activeBook?.units.find((u) => u.id === selection.unitId) ?? null;
@@ -95,9 +98,27 @@ export default function BookOverview({
                 {activeUnit.title}
               </button>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {activeLesson.title}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+                {activeLesson.title}
+              </h1>
+              <button
+                type="button"
+                onClick={() =>
+                  onEditNode({
+                    level: 'lesson',
+                    ids: { bookId: activeBook.id, unitId: activeUnit.id, lessonId: activeLesson.id, contentId: null },
+                    initialTitle: activeLesson.title,
+                    initialSummary: activeLesson.summary,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Sửa tên bài học"
+              >
+                <Pencil className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Sửa tên bài học</span>
+              </button>
+            </div>
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{activeLesson.summary}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -193,7 +214,30 @@ export default function BookOverview({
                       </div>
                     </div>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditNode({
+                          level: 'content',
+                          ids: {
+                            bookId: activeBook.id,
+                            unitId: activeUnit.id,
+                            lessonId: activeLesson.id,
+                            contentId: item.id,
+                          },
+                          initialTitle: item.title,
+                          initialMinutes: item.estimatedMinutes,
+                        });
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                      title="Sửa tên học liệu"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <ArrowRight className="w-4 h-4 text-slate-400" />
+                  </div>
                 </button>
               ))}
             </div>
@@ -220,9 +264,27 @@ export default function BookOverview({
               <span aria-hidden="true">/</span>
               <span>Chương {activeUnit.order}</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {activeUnit.title}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+                {activeUnit.title}
+              </h1>
+              <button
+                type="button"
+                onClick={() =>
+                  onEditNode({
+                    level: 'unit',
+                    ids: { bookId: activeBook.id, unitId: activeUnit.id, lessonId: null, contentId: null },
+                    initialTitle: activeUnit.title,
+                    initialDescription: activeUnit.description,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Sửa tên chương"
+              >
+                <Pencil className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Sửa tên chương</span>
+              </button>
+            </div>
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{activeUnit.description}</p>
           </div>
           <button
@@ -283,6 +345,21 @@ export default function BookOverview({
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
+                      onClick={() =>
+                        onEditNode({
+                          level: 'lesson',
+                          ids: { bookId: activeBook.id, unitId: activeUnit.id, lessonId: lesson.id, contentId: null },
+                          initialTitle: lesson.title,
+                          initialSummary: lesson.summary,
+                        })
+                      }
+                      className="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      title="Sửa tên bài học"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onAddContent(activeBook.id, activeUnit.id, lesson.id)}
                       className="px-3 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer whitespace-nowrap"
                     >
@@ -334,9 +411,30 @@ export default function BookOverview({
               <span aria-hidden="true">·</span>
               <span>{activeBook.author}</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">
-              {activeBook.title}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">
+                {activeBook.title}
+              </h1>
+              <button
+                type="button"
+                onClick={() =>
+                  onEditNode({
+                    level: 'book',
+                    ids: { bookId: activeBook.id, unitId: null, lessonId: null, contentId: null },
+                    initialTitle: activeBook.title,
+                    initialSubject: activeBook.subject,
+                    initialGrade: activeBook.gradeLevel,
+                    initialAuthor: activeBook.author,
+                    initialDescription: activeBook.description,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                title="Sửa tên & thông tin sách"
+              >
+                <Pencil className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Sửa thông tin sách</span>
+              </button>
+            </div>
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
               {activeBook.description}
             </p>
@@ -401,17 +499,34 @@ export default function BookOverview({
                   className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden"
                 >
                   <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                    <div>
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSelect({ bookId: activeBook.id, unitId: unit.id, lessonId: null, contentId: null })
+                          }
+                          className="text-base font-semibold text-slate-900 dark:text-slate-100 hover:underline cursor-pointer text-left"
+                        >
+                          {unit.title}
+                        </button>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{unit.description}</p>
+                      </div>
                       <button
                         type="button"
                         onClick={() =>
-                          onSelect({ bookId: activeBook.id, unitId: unit.id, lessonId: null, contentId: null })
+                          onEditNode({
+                            level: 'unit',
+                            ids: { bookId: activeBook.id, unitId: unit.id, lessonId: null, contentId: null },
+                            initialTitle: unit.title,
+                            initialDescription: unit.description,
+                          })
                         }
-                        className="text-base font-semibold text-slate-900 dark:text-slate-100 hover:underline cursor-pointer text-left"
+                        className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        title="Sửa tên chương"
                       >
-                        {unit.title}
+                        <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{unit.description}</p>
                     </div>
                     <button
                       type="button"
@@ -446,6 +561,21 @@ export default function BookOverview({
                         </div>
                         <div className="flex items-center gap-3 shrink-0 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                           <span>{lesson.contents.length} học liệu</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onEditNode({
+                                level: 'lesson',
+                                ids: { bookId: activeBook.id, unitId: unit.id, lessonId: lesson.id, contentId: null },
+                                initialTitle: lesson.title,
+                                initialSummary: lesson.summary,
+                              })
+                            }
+                            className="p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            title="Sửa tên bài học"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() =>

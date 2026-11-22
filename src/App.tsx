@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookMarked, CheckCircle2, Info, Key, Plus, Settings, X, XCircle } from 'lucide-react';
+import { BookMarked, CheckCircle2, HardDrive, Info, Key, Plus, Settings, X, XCircle } from 'lucide-react';
 import type {
   Book,
   BrandingConfig,
@@ -10,17 +10,19 @@ import type {
   Unit,
 } from './types/academic';
 import { INITIAL_HUB_STATE } from './data/seedData';
-import { loadLocalHubState, saveLocalHubState } from './utils/storage';
+import { getSavedDirectoryHandle, loadLocalHubState, saveLocalHubState, saveSavedDirectoryHandle } from './utils/storage';
+import { writeStateToDirectory } from './utils/directoryStorage';
 import HierarchySidebar from './components/HierarchySidebar';
 import BookOverview from './components/BookOverview';
 import InteractiveViewer from './components/InteractiveViewer';
 import AiArchitectWorkspace from './components/AiArchitectWorkspace';
-import PortabilityConsole from './components/PortabilityConsole';
+import PortabilityConsole, { type DirectoryStateInfo } from './components/PortabilityConsole';
 import BrandingConsole from './components/BrandingConsole';
 import ConceptMapView from './components/ConceptMapView';
 import LearningAnalyticsDashboard from './components/LearningAnalyticsDashboard';
 import AiSettingsModal, { getSavedApiKey } from './components/AiSettingsModal';
 import ContentFormModal, { type ModalTarget } from './components/ContentFormModal';
+import EditNodeModal, { type EditTarget } from './components/EditNodeModal';
 
 type WorkspaceSection =
   | 'library'
@@ -51,8 +53,17 @@ export default function App() {
   });
 
   const [modalTarget, setModalTarget] = useState<ModalTarget | null>(null);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [aiPrefillPrompt, setAiPrefillPrompt] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+
+  // Local-First PC Directory state
+  const [directoryInfo, setDirectoryInfo] = useState<DirectoryStateInfo>({
+    handle: null,
+    name: null,
+    lastSyncAt: null,
+    autoSync: true,
+  });
 
   // AI Key & Settings Modal
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
@@ -117,6 +128,44 @@ export default function App() {
     }, 250);
     return () => clearTimeout(timer);
   }, [hubState, hydrated]);
+
+  // Load saved Directory Handle from IndexedDB
+  useEffect(() => {
+    getSavedDirectoryHandle()
+      .then(({ handle, meta }) => {
+        if (handle && meta) {
+          setDirectoryInfo({
+            handle,
+            name: meta.name,
+            lastSyncAt: meta.lastSyncAt,
+            autoSync: meta.autoSync ?? true,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Background Auto-sync to connected PC Directory with debounce
+  useEffect(() => {
+    if (!hydrated || !directoryInfo.handle || !directoryInfo.autoSync) return;
+    const timer = setTimeout(() => {
+      writeStateToDirectory(directoryInfo.handle!, hubState)
+        .then(() => {
+          const now = new Date().toISOString();
+          setDirectoryInfo((prev) => ({ ...prev, lastSyncAt: now }));
+          saveSavedDirectoryHandle(directoryInfo.handle!, {
+            name: directoryInfo.name || directoryInfo.handle!.name,
+            lastSyncAt: now,
+            autoSync: directoryInfo.autoSync,
+          });
+        })
+        .catch((err) => {
+          console.warn('Auto-sync to PC directory skipped/failed:', err);
+        });
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [hubState, hydrated, directoryInfo.handle, directoryInfo.autoSync]);
 
   // Apply White-Label branding CSS tokens & Light/Dark mode globally
   useEffect(() => {
@@ -269,6 +318,106 @@ export default function App() {
         };
       }),
     }));
+  };
+
+  const handleEditNode = (
+    level: 'book' | 'unit' | 'lesson' | 'content',
+    ids: SelectionPath,
+    data: {
+      title: string;
+      description?: string;
+      summary?: string;
+      subject?: string;
+      gradeLevel?: string;
+      author?: string;
+      estimatedMinutes?: number;
+    }
+  ) => {
+    setHubState((prev) => {
+      if (level === 'book') {
+        return {
+          ...prev,
+          books: prev.books.map((b) =>
+            b.id === ids.bookId
+              ? {
+                  ...b,
+                  title: data.title,
+                  ...(data.description !== undefined && { description: data.description }),
+                  ...(data.subject !== undefined && { subject: data.subject }),
+                  ...(data.gradeLevel !== undefined && { gradeLevel: data.gradeLevel }),
+                  ...(data.author !== undefined && { author: data.author }),
+                  updatedAt: new Date().toISOString(),
+                }
+              : b
+          ),
+        };
+      }
+      return {
+        ...prev,
+        books: prev.books.map((book) => {
+          if (book.id !== ids.bookId) return book;
+          if (level === 'unit') {
+            return {
+              ...book,
+              updatedAt: new Date().toISOString(),
+              units: book.units.map((u) =>
+                u.id === ids.unitId
+                  ? {
+                      ...u,
+                      title: data.title,
+                      ...(data.description !== undefined && { description: data.description }),
+                    }
+                  : u
+              ),
+            };
+          }
+          return {
+            ...book,
+            updatedAt: new Date().toISOString(),
+            units: book.units.map((unit) => {
+              if (unit.id !== ids.unitId) return unit;
+              if (level === 'lesson') {
+                return {
+                  ...unit,
+                  lessons: unit.lessons.map((l) =>
+                    l.id === ids.lessonId
+                      ? {
+                          ...l,
+                          title: data.title,
+                          ...(data.summary !== undefined && { summary: data.summary }),
+                        }
+                      : l
+                  ),
+                };
+              }
+              return {
+                ...unit,
+                lessons: unit.lessons.map((l) => {
+                  if (l.id !== ids.lessonId) return l;
+                  return {
+                    ...l,
+                    contents: l.contents.map((c) =>
+                      c.id === ids.contentId
+                        ? {
+                            ...c,
+                            title: data.title,
+                            ...(data.estimatedMinutes !== undefined && { estimatedMinutes: data.estimatedMinutes }),
+                            updatedAt: new Date().toISOString(),
+                          }
+                        : c
+                    ),
+                  };
+                }),
+              };
+            }),
+          };
+        }),
+      };
+    });
+
+    const levelName =
+      level === 'book' ? 'sách' : level === 'unit' ? 'chương' : level === 'lesson' ? 'bài học' : 'học liệu';
+    notify(`Đã cập nhật tên ${levelName} "${data.title}" thành công!`, 'success');
   };
 
   const handleDeleteNode = (
@@ -430,6 +579,27 @@ export default function App() {
 
         {/* Zone 3: Settings & Primary Action */}
         <div className="flex items-center gap-3 shrink-0">
+          {/* PC Local-First Storage Directory Indicator */}
+          <button
+            type="button"
+            onClick={() => setActiveSection('portability')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              directoryInfo.name
+                ? 'border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                : 'border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+            title={
+              directoryInfo.name
+                ? `Đang lưu trực tiếp vào thư mục PC: ${directoryInfo.name}`
+                : 'Chọn thư mục/ổ đĩa PC để lưu trữ toàn bộ ứng dụng'
+            }
+          >
+            <HardDrive className={`w-3.5 h-3.5 ${directoryInfo.name ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
+            <span className="truncate max-w-[130px]">
+              {directoryInfo.name ? `Ổ đĩa: ${directoryInfo.name}` : 'Chọn ổ đĩa PC'}
+            </span>
+          </button>
+
           {/* API Key Settings Button (AI_INSTRUCTIONS compliance) */}
           <button
             type="button"
@@ -471,6 +641,7 @@ export default function App() {
                 setModalTarget({ kind: 'content', bookId, unitId, lessonId })
               }
               onDeleteNode={handleDeleteNode}
+              onEditNode={setEditTarget}
             />
 
             <div className="flex-1 min-w-0">
@@ -483,6 +654,7 @@ export default function App() {
                   onNavigate={setSelection}
                   onUpdateContent={handleUpdateContent}
                   onNotify={notify}
+                  onEditNode={setEditTarget}
                 />
               ) : (
                 <BookOverview
@@ -500,6 +672,7 @@ export default function App() {
                     setAiPrefillPrompt(prompt);
                     setActiveSection('ai');
                   }}
+                  onEditNode={setEditTarget}
                 />
               )}
             </div>
@@ -544,6 +717,8 @@ export default function App() {
             hubState={hubState}
             storageEngine={storageEngine}
             lastSavedAt={lastSavedAt}
+            directoryInfo={directoryInfo}
+            onUpdateDirectoryInfo={setDirectoryInfo}
             onImportState={handleImportState}
             onResetToSeed={() => {
               setHubState(INITIAL_HUB_STATE);
@@ -579,6 +754,15 @@ export default function App() {
           onCreateLesson={handleCreateLesson}
           onCreateContent={handleCreateContent}
           onNotify={notify}
+        />
+      )}
+
+      {/* Node Edit / Rename Modal */}
+      {editTarget && (
+        <EditNodeModal
+          target={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSave={handleEditNode}
         />
       )}
 

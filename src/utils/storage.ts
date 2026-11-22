@@ -11,11 +11,17 @@ function openDatabase(): Promise<IDBDatabase> {
       reject(new Error('IndexedDB unavailable'));
       return;
     }
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
+      }
+      if (!db.objectStoreNames.contains('hub_handles')) {
+        db.createObjectStore('hub_handles');
+      }
+      if (!db.objectStoreNames.contains('hub_dir_meta')) {
+        db.createObjectStore('hub_dir_meta');
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -103,4 +109,72 @@ export function sanitizeSlug(input: string, fallback = 'item'): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
   return normalized || fallback;
+}
+
+export interface DirectoryMeta {
+  name: string;
+  lastSyncAt: string | null;
+  autoSync: boolean;
+}
+
+export async function saveSavedDirectoryHandle(
+  handle: FileSystemDirectoryHandle,
+  meta: DirectoryMeta
+): Promise<void> {
+  try {
+    const db = await openDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(['hub_handles', 'hub_dir_meta'], 'readwrite');
+      tx.objectStore('hub_handles').put(handle, 'active_pc_directory');
+      tx.objectStore('hub_dir_meta').put(meta, 'active_pc_directory_meta');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('Could not persist directory handle to IndexedDB:', err);
+  }
+}
+
+export async function getSavedDirectoryHandle(): Promise<{
+  handle: FileSystemDirectoryHandle | null;
+  meta: DirectoryMeta | null;
+}> {
+  try {
+    const db = await openDatabase();
+    const result = await new Promise<{ handle: FileSystemDirectoryHandle | null; meta: DirectoryMeta | null }>(
+      (resolve, reject) => {
+        const tx = db.transaction(['hub_handles', 'hub_dir_meta'], 'readonly');
+        const reqHandle = tx.objectStore('hub_handles').get('active_pc_directory');
+        const reqMeta = tx.objectStore('hub_dir_meta').get('active_pc_directory_meta');
+        tx.oncomplete = () => {
+          resolve({
+            handle: (reqHandle.result as FileSystemDirectoryHandle) ?? null,
+            meta: (reqMeta.result as DirectoryMeta) ?? null,
+          });
+        };
+        tx.onerror = () => reject(tx.error);
+      }
+    );
+    db.close();
+    return result;
+  } catch {
+    return { handle: null, meta: null };
+  }
+}
+
+export async function clearSavedDirectoryHandle(): Promise<void> {
+  try {
+    const db = await openDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(['hub_handles', 'hub_dir_meta'], 'readwrite');
+      tx.objectStore('hub_handles').delete('active_pc_directory');
+      tx.objectStore('hub_dir_meta').delete('active_pc_directory_meta');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // Ignore error
+  }
 }

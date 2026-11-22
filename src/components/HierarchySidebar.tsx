@@ -10,11 +10,13 @@ import {
   HelpCircle,
   Layers,
   Orbit,
+  Pencil,
   Plus,
   Search,
   Trash2,
 } from 'lucide-react';
 import type { Book, ContentType, SelectionPath } from '../types/academic';
+import type { EditTarget } from './EditNodeModal';
 
 interface HierarchySidebarProps {
   books: Book[];
@@ -25,6 +27,7 @@ interface HierarchySidebarProps {
   onAddLesson: (bookId: string, unitId: string) => void;
   onAddContent: (bookId: string, unitId: string, lessonId: string) => void;
   onDeleteNode: (level: 'book' | 'unit' | 'lesson' | 'content', ids: SelectionPath, title: string) => void;
+  onEditNode: (target: EditTarget) => void;
 }
 
 function getContentIcon(type: ContentType) {
@@ -44,6 +47,7 @@ export default function HierarchySidebar({
   onAddLesson,
   onAddContent,
   onDeleteNode,
+  onEditNode,
 }: HierarchySidebarProps) {
   const [query, setQuery] = useState('');
   const [expandedBooks, setExpandedBooks] = useState<Record<string, boolean>>(() => {
@@ -212,6 +216,24 @@ export default function HierarchySidebar({
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
                     <button
                       type="button"
+                      onClick={() =>
+                        onEditNode({
+                          level: 'book',
+                          ids: { bookId: book.id, unitId: null, lessonId: null, contentId: null },
+                          initialTitle: book.title,
+                          initialSubject: book.subject,
+                          initialGrade: book.gradeLevel,
+                          initialAuthor: book.author,
+                          initialDescription: book.description,
+                        })
+                      }
+                      title="Sửa tên & thông tin Sách"
+                      className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setExpandedBooks((prev) => ({ ...prev, [book.id]: true }));
                         onAddUnit(book.id);
@@ -284,6 +306,21 @@ export default function HierarchySidebar({
                                 <span className="truncate">{unit.title}</span>
                               </button>
                               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onEditNode({
+                                      level: 'unit',
+                                      ids: { bookId: book.id, unitId: unit.id, lessonId: null, contentId: null },
+                                      initialTitle: unit.title,
+                                      initialDescription: unit.description,
+                                    })
+                                  }
+                                  title="Sửa tên Chương"
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -368,6 +405,21 @@ export default function HierarchySidebar({
                                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
                                             <button
                                               type="button"
+                                              onClick={() =>
+                                                onEditNode({
+                                                  level: 'lesson',
+                                                  ids: { bookId: book.id, unitId: unit.id, lessonId: lesson.id, contentId: null },
+                                                  initialTitle: lesson.title,
+                                                  initialSummary: lesson.summary,
+                                                })
+                                              }
+                                              title="Sửa tên Bài học"
+                                              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                                            >
+                                              <Pencil className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
                                               onClick={() => {
                                                 setExpandedLessons((prev) => ({ ...prev, [lesson.id]: true }));
                                                 onAddContent(book.id, unit.id, lesson.id);
@@ -436,6 +488,30 @@ export default function HierarchySidebar({
                                                     >
                                                       {getContentIcon(content.type)}
                                                       <span className="truncate">{content.title}</span>
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        onEditNode({
+                                                          level: 'content',
+                                                          ids: {
+                                                            bookId: book.id,
+                                                            unitId: unit.id,
+                                                            lessonId: lesson.id,
+                                                            contentId: content.id,
+                                                          },
+                                                          initialTitle: content.title,
+                                                          initialMinutes: content.estimatedMinutes,
+                                                        })
+                                                      }
+                                                      title="Sửa tên học liệu"
+                                                      className={`p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer shrink-0 ${
+                                                        isContentSelected
+                                                          ? 'hover:bg-white/20 text-white'
+                                                          : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600'
+                                                      }`}
+                                                    >
+                                                      <Pencil className="w-3 h-3" />
                                                     </button>
                                                     <button
                                                       type="button"

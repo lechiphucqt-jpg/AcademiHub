@@ -170,7 +170,7 @@ export function exportJsonSnapshot(state: HubState): { blob: Blob; filename: str
   return { blob, filename };
 }
 
-function validateAndSanitizeBranding(raw: unknown): BrandingConfig {
+export function validateAndSanitizeBranding(raw: unknown): BrandingConfig {
   if (!raw || typeof raw !== 'object') return DEFAULT_BRANDING;
   const candidate = raw as Partial<BrandingConfig>;
   const safeLogo = isSafeImageSrc(candidate.logoDataUrl) ? candidate.logoDataUrl ?? null : null;
@@ -193,7 +193,7 @@ function validateAndSanitizeBranding(raw: unknown): BrandingConfig {
   };
 }
 
-function validateBooksStrictHierarchy(rawBooks: unknown): Book[] {
+export function validateBooksStrictHierarchy(rawBooks: unknown): Book[] {
   if (!Array.isArray(rawBooks)) {
     throw new Error('Cấu trúc dữ liệu không hợp lệ: thiếu danh sách Sách (books[]).');
   }
