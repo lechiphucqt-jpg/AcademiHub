@@ -524,6 +524,185 @@ export default function App() {
     notify('Đã cập nhật thứ tự sách thành công!', 'success');
   };
 
+  const handleReorderUnits = (bookId: string, newUnits: Unit[]) => {
+    setHubState((prev) => ({
+      ...prev,
+      books: prev.books.map((b) => {
+        if (b.id !== bookId) return b;
+        return {
+          ...b,
+          updatedAt: new Date().toISOString(),
+          units: newUnits.map((u, idx) => ({ ...u, order: idx + 1 })),
+        };
+      }),
+    }));
+    notify('Đã cập nhật thứ tự chương thành công!', 'success');
+  };
+
+  const handleReorderLessons = (bookId: string, unitId: string, newLessons: Lesson[]) => {
+    setHubState((prev) => ({
+      ...prev,
+      books: prev.books.map((b) => {
+        if (b.id !== bookId) return b;
+        return {
+          ...b,
+          updatedAt: new Date().toISOString(),
+          units: b.units.map((u) => {
+            if (u.id !== unitId) return u;
+            return {
+              ...u,
+              lessons: newLessons.map((l, idx) => ({ ...l, order: idx + 1 })),
+            };
+          }),
+        };
+      }),
+    }));
+    notify('Đã cập nhật thứ tự bài học thành công!', 'success');
+  };
+
+  const handleReorderContents = (
+    bookId: string,
+    unitId: string,
+    lessonId: string,
+    newContents: DetailedContent[]
+  ) => {
+    setHubState((prev) => ({
+      ...prev,
+      books: prev.books.map((b) => {
+        if (b.id !== bookId) return b;
+        return {
+          ...b,
+          updatedAt: new Date().toISOString(),
+          units: b.units.map((u) => {
+            if (u.id !== unitId) return u;
+            return {
+              ...u,
+              lessons: u.lessons.map((l) => {
+                if (l.id !== lessonId) return l;
+                return {
+                  ...l,
+                  contents: newContents,
+                };
+              }),
+            };
+          }),
+        };
+      }),
+    }));
+    notify('Đã cập nhật thứ tự nội dung học liệu!', 'success');
+  };
+
+  const handleMoveLessonAcrossUnits = (
+    bookId: string,
+    sourceUnitId: string,
+    lessonId: string,
+    targetUnitId: string,
+    targetIndex?: number
+  ) => {
+    setHubState((prev) => {
+      const book = prev.books.find((b) => b.id === bookId);
+      if (!book) return prev;
+      const sourceUnit = book.units.find((u) => u.id === sourceUnitId);
+      const targetUnit = book.units.find((u) => u.id === targetUnitId);
+      if (!sourceUnit || !targetUnit) return prev;
+
+      const lessonToMove = sourceUnit.lessons.find((l) => l.id === lessonId);
+      if (!lessonToMove) return prev;
+
+      const newSourceLessons = sourceUnit.lessons.filter((l) => l.id !== lessonId);
+      const newTargetLessons =
+        sourceUnitId === targetUnitId ? [...newSourceLessons] : [...targetUnit.lessons];
+
+      const insertIdx =
+        typeof targetIndex === 'number' && targetIndex >= 0 ? targetIndex : newTargetLessons.length;
+      newTargetLessons.splice(insertIdx, 0, lessonToMove);
+
+      return {
+        ...prev,
+        books: prev.books.map((b) => {
+          if (b.id !== bookId) return b;
+          return {
+            ...b,
+            updatedAt: new Date().toISOString(),
+            units: b.units.map((u) => {
+              if (u.id === sourceUnitId && sourceUnitId === targetUnitId) {
+                return { ...u, lessons: newTargetLessons.map((l, idx) => ({ ...l, order: idx + 1 })) };
+              }
+              if (u.id === sourceUnitId) {
+                return { ...u, lessons: newSourceLessons.map((l, idx) => ({ ...l, order: idx + 1 })) };
+              }
+              if (u.id === targetUnitId) {
+                return { ...u, lessons: newTargetLessons.map((l, idx) => ({ ...l, order: idx + 1 })) };
+              }
+              return u;
+            }),
+          };
+        }),
+      };
+    });
+    notify('Đã di chuyển bài học thành công!', 'success');
+  };
+
+  const handleMoveContentAcrossLessons = (
+    bookId: string,
+    unitId: string,
+    sourceLessonId: string,
+    contentId: string,
+    targetLessonId: string,
+    targetIndex?: number
+  ) => {
+    setHubState((prev) => {
+      const book = prev.books.find((b) => b.id === bookId);
+      if (!book) return prev;
+      const unit = book.units.find((u) => u.id === unitId);
+      if (!unit) return prev;
+      const sourceLesson = unit.lessons.find((l) => l.id === sourceLessonId);
+      const targetLesson = unit.lessons.find((l) => l.id === targetLessonId);
+      if (!sourceLesson || !targetLesson) return prev;
+
+      const contentToMove = sourceLesson.contents.find((c) => c.id === contentId);
+      if (!contentToMove) return prev;
+
+      const newSourceContents = sourceLesson.contents.filter((c) => c.id !== contentId);
+      const newTargetContents =
+        sourceLessonId === targetLessonId ? [...newSourceContents] : [...targetLesson.contents];
+
+      const insertIdx =
+        typeof targetIndex === 'number' && targetIndex >= 0 ? targetIndex : newTargetContents.length;
+      newTargetContents.splice(insertIdx, 0, contentToMove);
+
+      return {
+        ...prev,
+        books: prev.books.map((b) => {
+          if (b.id !== bookId) return b;
+          return {
+            ...b,
+            updatedAt: new Date().toISOString(),
+            units: b.units.map((u) => {
+              if (u.id !== unitId) return u;
+              return {
+                ...u,
+                lessons: u.lessons.map((l) => {
+                  if (l.id === sourceLessonId && sourceLessonId === targetLessonId) {
+                    return { ...l, contents: newTargetContents };
+                  }
+                  if (l.id === sourceLessonId) {
+                    return { ...l, contents: newSourceLessons };
+                  }
+                  if (l.id === targetLessonId) {
+                    return { ...l, contents: newTargetContents };
+                  }
+                  return l;
+                }),
+              };
+            }),
+          };
+        }),
+      };
+    });
+    notify('Đã di chuyển nội dung học liệu thành công!', 'success');
+  };
+
   const handleSaveExamAsQuizToLesson = (
     bookId: string,
     unitId: string,
@@ -679,6 +858,11 @@ export default function App() {
               onDeleteNode={handleDeleteNode}
               onEditNode={setEditTarget}
               onReorderBooks={handleReorderBooks}
+              onReorderUnits={handleReorderUnits}
+              onReorderLessons={handleReorderLessons}
+              onReorderContents={handleReorderContents}
+              onMoveLessonAcrossUnits={handleMoveLessonAcrossUnits}
+              onMoveContentAcrossLessons={handleMoveContentAcrossLessons}
             />
 
             <div className="flex-1 min-w-0">

@@ -19,8 +19,16 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import type { Book, ContentType, SelectionPath } from '../types/academic';
+import type { Book, ContentType, DetailedContent, Lesson, SelectionPath, Unit } from '../types/academic';
 import type { EditTarget } from './EditNodeModal';
+
+interface DragNode {
+  level: 'book' | 'unit' | 'lesson' | 'content';
+  bookId: string;
+  unitId?: string;
+  lessonId?: string;
+  contentId?: string;
+}
 
 interface HierarchySidebarProps {
   books: Book[];
@@ -33,6 +41,24 @@ interface HierarchySidebarProps {
   onDeleteNode: (level: 'book' | 'unit' | 'lesson' | 'content', ids: SelectionPath, title: string) => void;
   onEditNode: (target: EditTarget) => void;
   onReorderBooks?: (newBooks: Book[]) => void;
+  onReorderUnits?: (bookId: string, newUnits: Unit[]) => void;
+  onReorderLessons?: (bookId: string, unitId: string, newLessons: Lesson[]) => void;
+  onReorderContents?: (bookId: string, unitId: string, lessonId: string, newContents: DetailedContent[]) => void;
+  onMoveLessonAcrossUnits?: (
+    sourceBookId: string,
+    sourceUnitId: string,
+    lessonId: string,
+    targetUnitId: string,
+    targetIndex?: number
+  ) => void;
+  onMoveContentAcrossLessons?: (
+    sourceBookId: string,
+    sourceUnitId: string,
+    sourceLessonId: string,
+    contentId: string,
+    targetLessonId: string,
+    targetIndex?: number
+  ) => void;
 }
 
 function getContentIcon(type: ContentType) {
@@ -54,10 +80,15 @@ export default function HierarchySidebar({
   onDeleteNode,
   onEditNode,
   onReorderBooks,
+  onReorderUnits,
+  onReorderLessons,
+  onReorderContents,
+  onMoveLessonAcrossUnits,
+  onMoveContentAcrossLessons,
 }: HierarchySidebarProps) {
   const [query, setQuery] = useState('');
-  const [draggedBookId, setDraggedBookId] = useState<string | null>(null);
-  const [dragOverBookId, setDragOverBookId] = useState<string | null>(null);
+  const [dragNode, setDragNode] = useState<DragNode | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
 
   const [expandedBooks, setExpandedBooks] = useState<Record<string, boolean>>(() => {
@@ -97,33 +128,92 @@ export default function HierarchySidebar({
     onReorderBooks(newBooks);
   };
 
-  const handleDragStart = (e: React.DragEvent, bookId: string) => {
-    setDraggedBookId(bookId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', bookId);
+  const handleMoveUnit = (bookId: string, unitId: string, direction: 'up' | 'down') => {
+    if (!onReorderUnits) return;
+    const book = books.find((b) => b.id === bookId);
+    if (!book) return;
+    const curIdx = book.units.findIndex((u) => u.id === unitId);
+    if (curIdx === -1) return;
+    const targetIdx = direction === 'up' ? curIdx - 1 : curIdx + 1;
+    if (targetIdx < 0 || targetIdx >= book.units.length) return;
+
+    const newUnits = [...book.units];
+    const [moved] = newUnits.splice(curIdx, 1);
+    newUnits.splice(targetIdx, 0, moved);
+    onReorderUnits(bookId, newUnits);
   };
 
-  const handleDragOver = (e: React.DragEvent, bookId: string) => {
+  const handleMoveLesson = (bookId: string, unitId: string, lessonId: string, direction: 'up' | 'down') => {
+    if (!onReorderLessons) return;
+    const book = books.find((b) => b.id === bookId);
+    const unit = book?.units.find((u) => u.id === unitId);
+    if (!unit) return;
+    const curIdx = unit.lessons.findIndex((l) => l.id === lessonId);
+    if (curIdx === -1) return;
+    const targetIdx = direction === 'up' ? curIdx - 1 : curIdx + 1;
+    if (targetIdx < 0 || targetIdx >= unit.lessons.length) return;
+
+    const newLessons = [...unit.lessons];
+    const [moved] = newLessons.splice(curIdx, 1);
+    newLessons.splice(targetIdx, 0, moved);
+    onReorderLessons(bookId, unitId, newLessons);
+  };
+
+  const handleMoveContent = (
+    bookId: string,
+    unitId: string,
+    lessonId: string,
+    contentId: string,
+    direction: 'up' | 'down'
+  ) => {
+    if (!onReorderContents) return;
+    const book = books.find((b) => b.id === bookId);
+    const unit = book?.units.find((u) => u.id === unitId);
+    const lesson = unit?.lessons.find((l) => l.id === lessonId);
+    if (!lesson) return;
+    const curIdx = lesson.contents.findIndex((c) => c.id === contentId);
+    if (curIdx === -1) return;
+    const targetIdx = direction === 'up' ? curIdx - 1 : curIdx + 1;
+    if (targetIdx < 0 || targetIdx >= lesson.contents.length) return;
+
+    const newContents = [...lesson.contents];
+    const [moved] = newContents.splice(curIdx, 1);
+    newContents.splice(targetIdx, 0, moved);
+    onReorderContents(bookId, unitId, lessonId, newContents);
+  };
+
+  const handleDragStart = (e: React.DragEvent, node: DragNode) => {
+    setDragNode(node);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify(node));
+  };
+
+  const handleDragOver = (
+    e: React.DragEvent,
+    key: string,
+    level: 'book' | 'unit' | 'lesson' | 'content'
+  ) => {
     e.preventDefault();
+    if (!dragNode || dragNode.level !== level) return;
     e.dataTransfer.dropEffect = 'move';
-    if (dragOverBookId !== bookId) {
-      setDragOverBookId(bookId);
+    if (dragOverKey !== key) {
+      setDragOverKey(key);
     }
   };
 
-  const handleDrop = (e: React.DragEvent, targetBookId: string) => {
+  const handleDropBook = (e: React.DragEvent, targetBookId: string) => {
     e.preventDefault();
-    setDragOverBookId(null);
-    if (!draggedBookId || draggedBookId === targetBookId || !onReorderBooks) {
-      setDraggedBookId(null);
+    setDragOverKey(null);
+    if (!dragNode || dragNode.level !== 'book' || dragNode.bookId === targetBookId || !onReorderBooks) {
+      setDragNode(null);
       return;
     }
 
-    const sourceIndex = books.findIndex((b) => b.id === draggedBookId);
+    const sourceIndex = books.findIndex((b) => b.id === dragNode.bookId);
     const targetIndex = books.findIndex((b) => b.id === targetBookId);
 
     if (sourceIndex === -1 || targetIndex === -1) {
-      setDraggedBookId(null);
+      setDragNode(null);
       return;
     }
 
@@ -131,12 +221,151 @@ export default function HierarchySidebar({
     const [moved] = newBooks.splice(sourceIndex, 1);
     newBooks.splice(targetIndex, 0, moved);
     onReorderBooks(newBooks);
-    setDraggedBookId(null);
+    setDragNode(null);
+  };
+
+  const handleDropUnit = (e: React.DragEvent, bookId: string, targetUnitId: string) => {
+    e.preventDefault();
+    setDragOverKey(null);
+    if (!dragNode || dragNode.level !== 'unit' || dragNode.unitId === targetUnitId || !onReorderUnits) {
+      setDragNode(null);
+      return;
+    }
+
+    const book = books.find((b) => b.id === bookId);
+    if (!book || dragNode.bookId !== bookId) {
+      setDragNode(null);
+      return;
+    }
+
+    const sourceIndex = book.units.findIndex((u) => u.id === dragNode.unitId);
+    const targetIndex = book.units.findIndex((u) => u.id === targetUnitId);
+
+    if (sourceIndex === -1 || targetIndex === -1) {
+      setDragNode(null);
+      return;
+    }
+
+    const newUnits = [...book.units];
+    const [moved] = newUnits.splice(sourceIndex, 1);
+    newUnits.splice(targetIndex, 0, moved);
+    onReorderUnits(bookId, newUnits);
+    setDragNode(null);
+  };
+
+  const handleDropLesson = (
+    e: React.DragEvent,
+    targetBookId: string,
+    targetUnitId: string,
+    targetLessonId: string
+  ) => {
+    e.preventDefault();
+    setDragOverKey(null);
+    if (!dragNode || dragNode.level !== 'lesson' || !dragNode.lessonId) {
+      setDragNode(null);
+      return;
+    }
+
+    if (dragNode.lessonId === targetLessonId) {
+      setDragNode(null);
+      return;
+    }
+
+    if (dragNode.bookId === targetBookId && dragNode.unitId === targetUnitId) {
+      if (!onReorderLessons) {
+        setDragNode(null);
+        return;
+      }
+      const book = books.find((b) => b.id === targetBookId);
+      const unit = book?.units.find((u) => u.id === targetUnitId);
+      if (!unit) {
+        setDragNode(null);
+        return;
+      }
+      const sourceIndex = unit.lessons.findIndex((l) => l.id === dragNode.lessonId);
+      const targetIndex = unit.lessons.findIndex((l) => l.id === targetLessonId);
+      if (sourceIndex === -1 || targetIndex === -1) {
+        setDragNode(null);
+        return;
+      }
+      const newLessons = [...unit.lessons];
+      const [moved] = newLessons.splice(sourceIndex, 1);
+      newLessons.splice(targetIndex, 0, moved);
+      onReorderLessons(targetBookId, targetUnitId, newLessons);
+    } else {
+      if (onMoveLessonAcrossUnits && dragNode.unitId) {
+        const targetUnit = books.find((b) => b.id === targetBookId)?.units.find((u) => u.id === targetUnitId);
+        const targetIdx = targetUnit?.lessons.findIndex((l) => l.id === targetLessonId) ?? 0;
+        onMoveLessonAcrossUnits(dragNode.bookId, dragNode.unitId, dragNode.lessonId, targetUnitId, targetIdx);
+      }
+    }
+    setDragNode(null);
+  };
+
+  const handleDropContent = (
+    e: React.DragEvent,
+    targetBookId: string,
+    targetUnitId: string,
+    targetLessonId: string,
+    targetContentId: string
+  ) => {
+    e.preventDefault();
+    setDragOverKey(null);
+    if (!dragNode || dragNode.level !== 'content' || !dragNode.contentId) {
+      setDragNode(null);
+      return;
+    }
+
+    if (dragNode.contentId === targetContentId) {
+      setDragNode(null);
+      return;
+    }
+
+    if (dragNode.bookId === targetBookId && dragNode.unitId === targetUnitId && dragNode.lessonId === targetLessonId) {
+      if (!onReorderContents) {
+        setDragNode(null);
+        return;
+      }
+      const book = books.find((b) => b.id === targetBookId);
+      const unit = book?.units.find((u) => u.id === targetUnitId);
+      const lesson = unit?.lessons.find((l) => l.id === targetLessonId);
+      if (!lesson) {
+        setDragNode(null);
+        return;
+      }
+      const sourceIndex = lesson.contents.findIndex((c) => c.id === dragNode.contentId);
+      const targetIndex = lesson.contents.findIndex((c) => c.id === targetContentId);
+      if (sourceIndex === -1 || targetIndex === -1) {
+        setDragNode(null);
+        return;
+      }
+      const newContents = [...lesson.contents];
+      const [moved] = newContents.splice(sourceIndex, 1);
+      newContents.splice(targetIndex, 0, moved);
+      onReorderContents(targetBookId, targetUnitId, targetLessonId, newContents);
+    } else {
+      if (onMoveContentAcrossLessons && dragNode.unitId && dragNode.lessonId) {
+        const targetLesson = books
+          .find((b) => b.id === targetBookId)
+          ?.units.find((u) => u.id === targetUnitId)
+          ?.lessons.find((l) => l.id === targetLessonId);
+        const targetIdx = targetLesson?.contents.findIndex((c) => c.id === targetContentId) ?? 0;
+        onMoveContentAcrossLessons(
+          dragNode.bookId,
+          dragNode.unitId,
+          dragNode.lessonId,
+          dragNode.contentId,
+          targetLessonId,
+          targetIdx
+        );
+      }
+    }
+    setDragNode(null);
   };
 
   const handleDragEnd = () => {
-    setDraggedBookId(null);
-    setDragOverBookId(null);
+    setDragNode(null);
+    setDragOverKey(null);
   };
 
   const handleSortAlphabetically = (direction: 'asc' | 'desc') => {
@@ -326,8 +555,8 @@ export default function HierarchySidebar({
             const bookIndex = books.findIndex((b) => b.id === book.id);
             const isFirst = bookIndex === 0;
             const isLast = bookIndex === books.length - 1;
-            const isDragging = draggedBookId === book.id;
-            const isDragOver = dragOverBookId === book.id;
+            const isDragging = dragNode?.level === 'book' && dragNode.bookId === book.id;
+            const isDragOver = dragOverKey === `book-${book.id}`;
 
             return (
               <div
@@ -338,16 +567,16 @@ export default function HierarchySidebar({
                   isDragOver ? 'border-t-2 border-indigo-500 rounded-xs pt-0.5' : ''
                 }`}
                 onDragOver={(e) => {
-                  if (!normalizedQuery) handleDragOver(e, book.id);
+                  if (!normalizedQuery) handleDragOver(e, `book-${book.id}`, 'book');
                 }}
                 onDrop={(e) => {
-                  if (!normalizedQuery) handleDrop(e, book.id);
+                  if (!normalizedQuery) handleDropBook(e, book.id);
                 }}
               >
                 {/* Level 1: Book */}
                 <div
                   draggable={!normalizedQuery}
-                  onDragStart={(e) => handleDragStart(e, book.id)}
+                  onDragStart={(e) => handleDragStart(e, { level: 'book', bookId: book.id })}
                   onDragEnd={handleDragEnd}
                   className={`group flex items-center gap-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
                     isBookSelected
@@ -468,20 +697,50 @@ export default function HierarchySidebar({
                         + Thêm chương đầu tiên
                       </button>
                     ) : (
-                      book.units.map((unit) => {
+                      book.units.map((unit, uIndex) => {
                         const isUnitOpen = normalizedQuery ? true : !!expandedUnits[unit.id];
                         const isUnitSelected =
                           selection.bookId === book.id && selection.unitId === unit.id && !selection.lessonId;
+                        const isFirstUnit = uIndex === 0;
+                        const isLastUnit = uIndex === book.units.length - 1;
+                        const isDraggingUnit = dragNode?.level === 'unit' && dragNode.unitId === unit.id;
+                        const isDragOverUnit = dragOverKey === `unit-${unit.id}`;
 
                         return (
-                          <div key={unit.id} className="space-y-0.5">
+                          <div
+                            key={unit.id}
+                            className={`space-y-0.5 transition-all ${
+                              isDraggingUnit ? 'opacity-40 scale-[0.98]' : ''
+                            } ${
+                              isDragOverUnit ? 'border-t-2 border-indigo-500 rounded-xs pt-0.5' : ''
+                            }`}
+                            onDragOver={(e) => {
+                              if (!normalizedQuery) handleDragOver(e, `unit-${unit.id}`, 'unit');
+                            }}
+                            onDrop={(e) => {
+                              if (!normalizedQuery) handleDropUnit(e, book.id, unit.id);
+                            }}
+                          >
                             <div
+                              draggable={!normalizedQuery}
+                              onDragStart={(e) =>
+                                handleDragStart(e, { level: 'unit', bookId: book.id, unitId: unit.id })
+                              }
+                              onDragEnd={handleDragEnd}
                               className={`group flex items-center gap-1 px-1.5 py-1.5 rounded-md text-xs transition-colors ${
                                 isUnitSelected
                                   ? 'hub-accent-soft-bg hub-accent-text font-semibold'
                                   : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70'
                               }`}
                             >
+                              {!normalizedQuery && onReorderUnits && (
+                                <span
+                                  title="Kéo thả để sắp xếp thứ tự chương"
+                                  className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-1 shrink-0"
+                                >
+                                  <GripVertical className="w-3 h-3" />
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => toggleUnit(unit.id)}
@@ -506,6 +765,36 @@ export default function HierarchySidebar({
                                 <span className="truncate">{unit.title}</span>
                               </button>
                               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                                {!normalizedQuery && onReorderUnits && book.units.length > 1 && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveUnit(book.id, unit.id, 'up')}
+                                      disabled={isFirstUnit}
+                                      title={isFirstUnit ? 'Đã ở vị trí đầu tiên' : 'Di chuyển chương lên trên'}
+                                      className={`p-1 rounded transition-colors cursor-pointer ${
+                                        isFirstUnit
+                                          ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                          : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                      }`}
+                                    >
+                                      <ArrowUp className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveUnit(book.id, unit.id, 'down')}
+                                      disabled={isLastUnit}
+                                      title={isLastUnit ? 'Đã ở vị trí cuối cùng' : 'Di chuyển chương xuống dưới'}
+                                      className={`p-1 rounded transition-colors cursor-pointer ${
+                                        isLastUnit
+                                          ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                          : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                      }`}
+                                    >
+                                      <ArrowDown className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -561,20 +850,56 @@ export default function HierarchySidebar({
                                     + Thêm bài học mới
                                   </button>
                                 ) : (
-                                  unit.lessons.map((lesson) => {
+                                  unit.lessons.map((lesson, lIndex) => {
                                     const isLessonOpen = normalizedQuery ? true : !!expandedLessons[lesson.id];
                                     const isLessonSelected =
                                       selection.lessonId === lesson.id && !selection.contentId;
+                                    const isFirstLesson = lIndex === 0;
+                                    const isLastLesson = lIndex === unit.lessons.length - 1;
+                                    const isDraggingLesson =
+                                      dragNode?.level === 'lesson' && dragNode.lessonId === lesson.id;
+                                    const isDragOverLesson = dragOverKey === `lesson-${lesson.id}`;
 
                                     return (
-                                      <div key={lesson.id} className="space-y-0.5">
+                                      <div
+                                        key={lesson.id}
+                                        className={`space-y-0.5 transition-all ${
+                                          isDraggingLesson ? 'opacity-40 scale-[0.98]' : ''
+                                        } ${
+                                          isDragOverLesson ? 'border-t-2 border-indigo-500 rounded-xs pt-0.5' : ''
+                                        }`}
+                                        onDragOver={(e) => {
+                                          if (!normalizedQuery) handleDragOver(e, `lesson-${lesson.id}`, 'lesson');
+                                        }}
+                                        onDrop={(e) => {
+                                          if (!normalizedQuery) handleDropLesson(e, book.id, unit.id, lesson.id);
+                                        }}
+                                      >
                                         <div
+                                          draggable={!normalizedQuery}
+                                          onDragStart={(e) =>
+                                            handleDragStart(e, {
+                                              level: 'lesson',
+                                              bookId: book.id,
+                                              unitId: unit.id,
+                                              lessonId: lesson.id,
+                                            })
+                                          }
+                                          onDragEnd={handleDragEnd}
                                           className={`group flex items-center gap-1 px-1.5 py-1.5 rounded-md text-xs transition-colors ${
                                             isLessonSelected
                                               ? 'hub-accent-soft-bg hub-accent-text font-semibold'
                                               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70'
                                           }`}
                                         >
+                                          {!normalizedQuery && onReorderLessons && (
+                                            <span
+                                              title="Kéo thả để di chuyển bài học"
+                                              className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-1 shrink-0"
+                                            >
+                                              <GripVertical className="w-3 h-3" />
+                                            </span>
+                                          )}
                                           <button
                                             type="button"
                                             onClick={() => toggleLesson(lesson.id)}
@@ -603,12 +928,55 @@ export default function HierarchySidebar({
                                             {lesson.title}
                                           </button>
                                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                                            {!normalizedQuery && onReorderLessons && unit.lessons.length > 1 && (
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleMoveLesson(book.id, unit.id, lesson.id, 'up')}
+                                                  disabled={isFirstLesson}
+                                                  title={
+                                                    isFirstLesson
+                                                      ? 'Đã ở vị trí đầu tiên'
+                                                      : 'Di chuyển bài học lên trên'
+                                                  }
+                                                  className={`p-1 rounded transition-colors cursor-pointer ${
+                                                    isFirstLesson
+                                                      ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                                      : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                                  }`}
+                                                >
+                                                  <ArrowUp className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleMoveLesson(book.id, unit.id, lesson.id, 'down')}
+                                                  disabled={isLastLesson}
+                                                  title={
+                                                    isLastLesson
+                                                      ? 'Đã ở vị trí cuối cùng'
+                                                      : 'Di chuyển bài học xuống dưới'
+                                                  }
+                                                  className={`p-1 rounded transition-colors cursor-pointer ${
+                                                    isLastLesson
+                                                      ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                                      : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                                  }`}
+                                                >
+                                                  <ArrowDown className="w-3 h-3" />
+                                                </button>
+                                              </>
+                                            )}
                                             <button
                                               type="button"
                                               onClick={() =>
                                                 onEditNode({
                                                   level: 'lesson',
-                                                  ids: { bookId: book.id, unitId: unit.id, lessonId: lesson.id, contentId: null },
+                                                  ids: {
+                                                    bookId: book.id,
+                                                    unitId: unit.id,
+                                                    lessonId: lesson.id,
+                                                    contentId: null,
+                                                  },
                                                   initialTitle: lesson.title,
                                                   initialSummary: lesson.summary,
                                                 })
@@ -663,17 +1031,62 @@ export default function HierarchySidebar({
                                                 + Tải HTML / thêm học liệu
                                               </button>
                                             ) : (
-                                              lesson.contents.map((content) => {
+                                              lesson.contents.map((content, cIndex) => {
                                                 const isContentSelected = selection.contentId === content.id;
+                                                const isFirstContent = cIndex === 0;
+                                                const isLastContent = cIndex === lesson.contents.length - 1;
+                                                const isDraggingContent =
+                                                  dragNode?.level === 'content' && dragNode.contentId === content.id;
+                                                const isDragOverContent = dragOverKey === `content-${content.id}`;
+
                                                 return (
                                                   <div
                                                     key={content.id}
+                                                    draggable={!normalizedQuery}
+                                                    onDragStart={(e) =>
+                                                      handleDragStart(e, {
+                                                        level: 'content',
+                                                        bookId: book.id,
+                                                        unitId: unit.id,
+                                                        lessonId: lesson.id,
+                                                        contentId: content.id,
+                                                      })
+                                                    }
+                                                    onDragEnd={handleDragEnd}
+                                                    onDragOver={(e) => {
+                                                      if (!normalizedQuery)
+                                                        handleDragOver(e, `content-${content.id}`, 'content');
+                                                    }}
+                                                    onDrop={(e) => {
+                                                      if (!normalizedQuery)
+                                                        handleDropContent(
+                                                          e,
+                                                          book.id,
+                                                          unit.id,
+                                                          lesson.id,
+                                                          content.id
+                                                        );
+                                                    }}
                                                     className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs transition-colors ${
+                                                      isDraggingContent ? 'opacity-40 scale-[0.98]' : ''
+                                                    } ${
+                                                      isDragOverContent
+                                                        ? 'border-t-2 border-indigo-500 rounded-xs pt-0.5'
+                                                        : ''
+                                                    } ${
                                                       isContentSelected
                                                         ? 'hub-accent-bg font-medium'
                                                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                                                     }`}
                                                   >
+                                                    {!normalizedQuery && onReorderContents && (
+                                                      <span
+                                                        title="Kéo thả để di chuyển học liệu"
+                                                        className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-1 shrink-0"
+                                                      >
+                                                        <GripVertical className="w-2.5 h-2.5" />
+                                                      </span>
+                                                    )}
                                                     <button
                                                       type="button"
                                                       onClick={() =>
@@ -689,53 +1102,115 @@ export default function HierarchySidebar({
                                                       {getContentIcon(content.type)}
                                                       <span className="truncate">{content.title}</span>
                                                     </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() =>
-                                                        onEditNode({
-                                                          level: 'content',
-                                                          ids: {
-                                                            bookId: book.id,
-                                                            unitId: unit.id,
-                                                            lessonId: lesson.id,
-                                                            contentId: content.id,
-                                                          },
-                                                          initialTitle: content.title,
-                                                          initialMinutes: content.estimatedMinutes,
-                                                        })
-                                                      }
-                                                      title="Sửa tên học liệu"
-                                                      className={`p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer shrink-0 ${
-                                                        isContentSelected
-                                                          ? 'hover:bg-white/20 text-white'
-                                                          : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600'
-                                                      }`}
-                                                    >
-                                                      <Pencil className="w-3 h-3" />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() =>
-                                                        onDeleteNode(
-                                                          'content',
-                                                          {
-                                                            bookId: book.id,
-                                                            unitId: unit.id,
-                                                            lessonId: lesson.id,
-                                                            contentId: content.id,
-                                                          },
-                                                          content.title
-                                                        )
-                                                      }
-                                                      title="Xóa học liệu"
-                                                      className={`p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer shrink-0 ${
-                                                        isContentSelected
-                                                          ? 'hover:bg-white/20 text-white'
-                                                          : 'hover:bg-red-100 dark:hover:bg-red-950 text-slate-400 hover:text-red-600'
-                                                      }`}
-                                                    >
-                                                      <Trash2 className="w-3 h-3" />
-                                                    </button>
+                                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                                                      {!normalizedQuery &&
+                                                        onReorderContents &&
+                                                        lesson.contents.length > 1 && (
+                                                          <>
+                                                            <button
+                                                              type="button"
+                                                              onClick={() =>
+                                                                handleMoveContent(
+                                                                  book.id,
+                                                                  unit.id,
+                                                                  lesson.id,
+                                                                  content.id,
+                                                                  'up'
+                                                                )
+                                                              }
+                                                              disabled={isFirstContent}
+                                                              title={
+                                                                isFirstContent
+                                                                  ? 'Đã ở vị trí đầu tiên'
+                                                                  : 'Di chuyển nội dung lên trên'
+                                                              }
+                                                              className={`p-1 rounded transition-colors cursor-pointer shrink-0 ${
+                                                                isFirstContent
+                                                                  ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                                                  : isContentSelected
+                                                                  ? 'hover:bg-white/20 text-white'
+                                                                  : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600'
+                                                              }`}
+                                                            >
+                                                              <ArrowUp className="w-2.5 h-2.5" />
+                                                            </button>
+                                                            <button
+                                                              type="button"
+                                                              onClick={() =>
+                                                                handleMoveContent(
+                                                                  book.id,
+                                                                  unit.id,
+                                                                  lesson.id,
+                                                                  content.id,
+                                                                  'down'
+                                                                )
+                                                              }
+                                                              disabled={isLastContent}
+                                                              title={
+                                                                isLastContent
+                                                                  ? 'Đã ở vị trí cuối cùng'
+                                                                  : 'Di chuyển nội dung xuống dưới'
+                                                              }
+                                                              className={`p-1 rounded transition-colors cursor-pointer shrink-0 ${
+                                                                isLastContent
+                                                                  ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                                                  : isContentSelected
+                                                                  ? 'hover:bg-white/20 text-white'
+                                                                  : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600'
+                                                              }`}
+                                                            >
+                                                              <ArrowDown className="w-2.5 h-2.5" />
+                                                            </button>
+                                                          </>
+                                                        )}
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          onEditNode({
+                                                            level: 'content',
+                                                            ids: {
+                                                              bookId: book.id,
+                                                              unitId: unit.id,
+                                                              lessonId: lesson.id,
+                                                              contentId: content.id,
+                                                            },
+                                                            initialTitle: content.title,
+                                                            initialMinutes: content.estimatedMinutes,
+                                                          })
+                                                        }
+                                                        title="Sửa tên học liệu"
+                                                        className={`p-1 rounded cursor-pointer shrink-0 ${
+                                                          isContentSelected
+                                                            ? 'hover:bg-white/20 text-white'
+                                                            : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600'
+                                                        }`}
+                                                      >
+                                                        <Pencil className="w-3 h-3" />
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          onDeleteNode(
+                                                            'content',
+                                                            {
+                                                              bookId: book.id,
+                                                              unitId: unit.id,
+                                                              lessonId: lesson.id,
+                                                              contentId: content.id,
+                                                            },
+                                                            content.title
+                                                          )
+                                                        }
+                                                        title="Xóa học liệu"
+                                                        className={`p-1 rounded cursor-pointer shrink-0 ${
+                                                          isContentSelected
+                                                            ? 'hover:bg-white/20 text-white'
+                                                            : 'hover:bg-red-100 dark:hover:bg-red-950 text-slate-400 hover:text-red-600'
+                                                        }`}
+                                                      >
+                                                        <Trash2 className="w-3 h-3" />
+                                                      </button>
+                                                    </div>
                                                   </div>
                                                 );
                                               })
