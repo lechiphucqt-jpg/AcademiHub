@@ -35,6 +35,7 @@ import SafeMarkdown from './SafeMarkdown';
 import InteractiveGameEngine from './InteractiveGameEngine';
 import StemSimulationLab from './StemSimulationLab';
 import SocraticTutorDrawer from './SocraticTutorDrawer';
+import AiExamGeneratorModal from './AiExamGeneratorModal';
 import type { EditTarget } from './EditNodeModal';
 import {
   exportExamDocx,
@@ -58,6 +59,14 @@ interface InteractiveViewerProps {
   ) => void;
   onNotify: (message: string, tone?: 'success' | 'error' | 'info') => void;
   onEditNode?: (target: EditTarget) => void;
+  allBooks?: Book[];
+  onSaveExamAsQuizToLesson?: (
+    bookId: string,
+    unitId: string,
+    lessonId: string,
+    questions: QuizQuestion[],
+    examTitle: string
+  ) => void;
 }
 
 type ViewportSize = 'desktop' | 'tablet' | 'mobile';
@@ -72,6 +81,8 @@ export default function InteractiveViewer({
   onUpdateContent,
   onNotify,
   onEditNode,
+  allBooks,
+  onSaveExamAsQuizToLesson,
 }: InteractiveViewerProps) {
   const [viewport, setViewport] = useState<ViewportSize>('desktop');
   const [viewMode, setViewMode] = useState<EditorViewMode>('preview');
@@ -82,6 +93,7 @@ export default function InteractiveViewer({
   const [presentationZoom, setPresentationZoom] = useState(100);
   const [showAudit, setShowAudit] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
 
   const [draftHtml, setDraftHtml] = useState(content.htmlContent ?? '');
   const [draftMarkdown, setDraftMarkdown] = useState(content.readingMarkdown ?? '');
@@ -793,13 +805,12 @@ export default function InteractiveViewer({
 
               <button
                 type="button"
-                disabled={isExporting}
-                onClick={handleQuickExportExamDocx}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 cursor-pointer disabled:opacity-50"
-                title="Xuất ngân hàng câu hỏi thành Đề thi Word (.docx)"
+                onClick={() => setIsExamModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 cursor-pointer transition-colors shadow-xs"
+                title="A.I Tạo bài kiểm tra chuẩn Cambridge (chọn bài học, chọn loại đề, xuất Word & PDF)"
               >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Xuất Đề thi (.docx)</span>
+                <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>A.I Tạo Đề thi (Cambridge)</span>
               </button>
 
               <button
@@ -1284,6 +1295,21 @@ export default function InteractiveViewer({
         onClose={() => setShowSocraticTutor(false)}
         onNotify={onNotify}
       />
+
+      {/* A.I Cambridge Exam Generator Modal */}
+      {isExamModalOpen && (
+        <AiExamGeneratorModal
+          isOpen={isExamModalOpen}
+          onClose={() => setIsExamModalOpen(false)}
+          books={allBooks && allBooks.length > 0 ? allBooks : [book]}
+          currentBook={book}
+          currentUnit={unit}
+          currentLesson={lesson}
+          institutionName="Interactive Academic Hub"
+          onSaveExamAsQuizToLesson={onSaveExamAsQuizToLesson}
+          onNotify={onNotify}
+        />
+      )}
     </div>
   );
 }

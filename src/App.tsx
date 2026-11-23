@@ -524,6 +524,22 @@ export default function App() {
     notify('Đã cập nhật thứ tự sách thành công!', 'success');
   };
 
+  const handleSaveExamAsQuizToLesson = (
+    bookId: string,
+    unitId: string,
+    lessonId: string,
+    questions: QuizQuestion[],
+    examTitle: string
+  ) => {
+    handleCreateContent(bookId, unitId, lessonId, {
+      title: `${examTitle} (Quiz)`,
+      type: 'quiz',
+      description: `Đề kiểm tra trắc nghiệm chuẩn Cambridge (${questions.length} câu) tạo bởi A.I.`,
+      estimatedMinutes: Math.max(15, questions.length * 2),
+      quizQuestions: questions,
+    });
+  };
+
   const handlePrimaryHeaderAction = () => {
     if (resolvedNodes.book && resolvedNodes.unit && resolvedNodes.lesson) {
       setModalTarget({
@@ -676,6 +692,8 @@ export default function App() {
                   onUpdateContent={handleUpdateContent}
                   onNotify={notify}
                   onEditNode={setEditTarget}
+                  allBooks={hubState.books}
+                  onSaveExamAsQuizToLesson={handleSaveExamAsQuizToLesson}
                 />
               ) : (
                 <BookOverview
@@ -752,6 +770,7 @@ export default function App() {
               });
               notify('Đã khôi phục toàn bộ giáo trình mẫu ban đầu.', 'info');
             }}
+            onSaveExamAsQuizToLesson={handleSaveExamAsQuizToLesson}
             onNotify={notify}
           />
         )}

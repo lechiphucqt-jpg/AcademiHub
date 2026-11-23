@@ -20,10 +20,12 @@ import {
   RotateCcw,
   Share2,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
 import type { Book, HubState, QuizQuestion } from '../types/academic';
+import AiExamGeneratorModal from './AiExamGeneratorModal';
 import {
   buildPortableTreePreview,
   computeCurriculumStats,
@@ -71,6 +73,13 @@ interface PortabilityConsoleProps {
   onNotify: (message: string, tone?: 'success' | 'error' | 'info') => void;
   directoryInfo: DirectoryStateInfo;
   onUpdateDirectoryInfo: (updater: DirectoryStateInfo | ((prev: DirectoryStateInfo) => DirectoryStateInfo)) => void;
+  onSaveExamAsQuizToLesson?: (
+    bookId: string,
+    unitId: string,
+    lessonId: string,
+    questions: QuizQuestion[],
+    examTitle: string
+  ) => void;
 }
 
 export default function PortabilityConsole({
@@ -82,10 +91,12 @@ export default function PortabilityConsole({
   onNotify,
   directoryInfo,
   onUpdateDirectoryInfo,
+  onSaveExamAsQuizToLesson,
 }: PortabilityConsoleProps) {
   const [exportingZip, setExportingZip] = useState(false);
   const [syncingDir, setSyncingDir] = useState(false);
   const [isProcessingDir, setIsProcessingDir] = useState(false);
+  const [isCambridgeModalOpen, setIsCambridgeModalOpen] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [folderActionPending, setFolderActionPending] = useState<{
     handle: FileSystemDirectoryHandle;
@@ -773,26 +784,36 @@ export default function PortabilityConsole({
 
         {/* 4 Feature Action Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Word Exam */}
+          {/* Card 1: Cambridge & Word Exam */}
           <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 flex flex-col justify-between gap-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 font-bold text-xs">
                 <FileText className="w-4 h-4" />
-                <span>Đề thi Word (.docx)</span>
+                <span>Đề thi Chuẩn Cambridge (A.I)</span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                Chuẩn hóa đề thi của Bộ GD&amp;ĐT với 4 phương án A, B, C, D kèm bảng đáp án &amp; giải thích chi tiết ở trang cuối.
+                A.I quét các bài học, thiết lập ma trận đề Cambridge (YLE, KET, PET, FCE, GDPT), xuất file Word (.docx) &amp; PDF A4.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={pedagogyProcessing || targetQuestions.length === 0}
-              onClick={handleExportPedagogyExamDocx}
-              className="w-full py-2 px-3 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Tải Đề thi Word (.docx)</span>
-            </button>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setIsCambridgeModalOpen(true)}
+                className="w-full py-2 px-3 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>A.I Soạn Đề thi (Word/PDF)</span>
+              </button>
+              <button
+                type="button"
+                disabled={pedagogyProcessing || targetQuestions.length === 0}
+                onClick={handleExportPedagogyExamDocx}
+                className="w-full py-1.5 px-3 text-[11px] font-semibold rounded-lg border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Download className="w-3 h-3" />
+                <span>Xuất nhanh câu có sẵn (.docx)</span>
+              </button>
+            </div>
           </div>
 
           {/* Card 2: Lesson Plan CV 5512 */}
@@ -1141,6 +1162,17 @@ export default function PortabilityConsole({
             </div>
           </div>
         </div>
+      )}
+      {/* A.I Cambridge Exam Generator Modal */}
+      {isCambridgeModalOpen && (
+        <AiExamGeneratorModal
+          isOpen={isCambridgeModalOpen}
+          onClose={() => setIsCambridgeModalOpen(false)}
+          books={hubState.books}
+          institutionName={hubState.branding.institutionName}
+          onSaveExamAsQuizToLesson={onSaveExamAsQuizToLesson}
+          onNotify={onNotify}
+        />
       )}
     </div>
   );
