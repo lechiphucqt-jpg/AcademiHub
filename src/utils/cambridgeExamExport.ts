@@ -13,13 +13,23 @@ function escapeXml(unsafe: string | null | undefined): string {
     .replace(/'/g, '&apos;');
 }
 
+function escapeHtml(text: string | null | undefined): string {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 /**
  * 1. Xuất Đề thi Cambridge ra Microsoft Word (.docx)
  * Chuẩn định dạng Cambridge Assessment English:
  * - Header chuẩn Cambridge với Centre Number, Candidate Number, Candidate Name
- * - Các Part phân hóa rõ ràng (Part 1, Part 2, Part 3, Part 4)
- * - Điểm số phân bổ từng câu [1 mark]
- * - Ngắt trang sang CAMBRIDGE ASSESSMENT MARKING SCHEME & EXPLANATORY ANSWER KEY
+ * - Các Part phân hóa 4 kỹ năng (Listening, Reading, Writing, Speaking)
+ * - Kịch bản âm thanh Listening Audio Script
+ * - Chấm điểm Writing & Speaking có Rubrics và Bài mẫu
  */
 export async function exportCambridgeExamDocx(
   exam: CambridgeExam,
@@ -92,7 +102,7 @@ export async function exportCambridgeExamDocx(
     </w:p>
     <w:p>
       <w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr>
-      <w:r><w:rPr><w:i/><w:sz w:val="20"/><w:color w:val="475569"/></w:rPr><w:t>Paper Code: ${escapeXml(exam.examCode)} | Time allowed: ${exam.timeMinutes} minutes | Total: ${exam.totalMarks} marks</w:t></w:r>
+      <w:r><w:rPr><w:i/><w:sz w:val="20"/><w:color w:val="475569"/></w:rPr><w:t>Paper Code: ${escapeXml(exam.examCode)} | Time: ${exam.timeMinutes} mins | Total: ${exam.totalMarks} marks${exam.aiEngineUsed ? ` | Engine: ${escapeXml(exam.aiEngineUsed)}` : ''}</w:t></w:r>
     </w:p>
 
     <!-- Candidate Information Box Table -->
@@ -110,58 +120,43 @@ export async function exportCambridgeExamDocx(
       </w:tblPr>
       <w:tr>
         <w:tc>
-          <w:tcPr><w:tcW w:w="4700" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F8FAFC"/></w:tcPr>
-          <w:p>
-            <w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/></w:rPr><w:t>Centre Number: </w:t></w:r>
-            <w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>[   ] [   ] [   ] [   ] [   ]</w:t></w:r>
-          </w:p>
+          <w:tcPr><w:tcW w:w="3200" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F8FAFC"/></w:tcPr>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/><w:color w:val="475569"/></w:rPr><w:t>CENTRE NUMBER</w:t></w:r></w:p>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="24"/><w:color w:val="94A3B8"/></w:rPr><w:t>[  VN _ _ _  ]</w:t></w:r></w:p>
         </w:tc>
         <w:tc>
-          <w:tcPr><w:tcW w:w="4700" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F8FAFC"/></w:tcPr>
-          <w:p>
-            <w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/></w:rPr><w:t>Candidate Number: </w:t></w:r>
-            <w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>[   ] [   ] [   ] [   ]</w:t></w:r>
-          </w:p>
+          <w:tcPr><w:tcW w:w="3200" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F8FAFC"/></w:tcPr>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/><w:color w:val="475569"/></w:rPr><w:t>CANDIDATE NUMBER</w:t></w:r></w:p>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="24"/><w:color w:val="94A3B8"/></w:rPr><w:t>[  _ _ _ _  ]</w:t></w:r></w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F8FAFC"/></w:tcPr>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/><w:color w:val="475569"/></w:rPr><w:t>DATE OF EXAM</w:t></w:r></w:p>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:color w:val="002E62"/></w:rPr><w:t>${escapeXml(exam.generatedAt)}</w:t></w:r></w:p>
         </w:tc>
       </w:tr>
       <w:tr>
         <w:tc>
-          <w:tcPr><w:tcW w:w="4700" w:type="dxa"/></w:tcPr>
-          <w:p>
-            <w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/></w:rPr><w:t>Candidate Name: </w:t></w:r>
-            <w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>................................................................</w:t></w:r>
-          </w:p>
-        </w:tc>
-        <w:tc>
-          <w:tcPr><w:tcW w:w="4700" w:type="dxa"/></w:tcPr>
-          <w:p>
-            <w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="20"/></w:rPr><w:t>Class / Date: </w:t></w:r>
-            <w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>......................................................</w:t></w:r>
-          </w:p>
+          <w:tcPr><w:gridSpan w:val="3"/><w:tcW w:w="9400" w:type="dxa"/></w:tcPr>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/><w:color w:val="475569"/></w:rPr><w:t>CANDIDATE NAME (Họ và tên thí sinh):</w:t></w:r></w:p>
+          <w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="22"/><w:color w:val="94A3B8"/></w:rPr><w:t>____________________________________________________________________________</w:t></w:r></w:p>
         </w:tc>
       </w:tr>
     </w:tbl>
 
-    <!-- Instructions To Candidates Box -->
+    <!-- Instructions to Candidates -->
     <w:p><w:pPr><w:spacing w:before="140" w:after="60"/></w:pPr>
       <w:r><w:rPr><w:b/><w:sz w:val="21"/><w:color w:val="002E62"/></w:rPr><w:t>INSTRUCTIONS TO CANDIDATES:</w:t></w:r>
     </w:p>
-    <w:p><w:pPr><w:ind w:left="240"/><w:spacing w:after="30"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>• Write your name, centre number and candidate number in the spaces at the top of this page.</w:t></w:r>
-    </w:p>
-    <w:p><w:pPr><w:ind w:left="240"/><w:spacing w:after="30"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>• Answer ALL the questions. Write your answers on this question paper.</w:t></w:r>
-    </w:p>
-    <w:p><w:pPr><w:ind w:left="240"/><w:spacing w:after="30"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>• Read the instructions for each part carefully before answering.</w:t></w:r>
-    </w:p>
-    <w:p><w:pPr><w:ind w:left="240"/><w:spacing w:after="140"/></w:pPr>
-      <w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>• Dictionaries and electronic devices are NOT permitted.</w:t></w:r>
-    </w:p>
+    ${exam.instructionsToCandidates
+      .map(
+        (inst) => `
+      <w:p><w:pPr><w:ind w:left="240"/><w:spacing w:after="30"/></w:pPr>
+        <w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>• ${escapeXml(inst)}</w:t></w:r>
+      </w:p>
+    `
+      )
+      .join('')}
   `;
 
   // Render Parts & Questions
@@ -181,7 +176,7 @@ export async function exportCambridgeExamDocx(
           <w:spacing w:before="240" w:after="60"/>
         </w:pPr>
         <w:r><w:rPr><w:b/><w:sz w:val="24"/><w:color w:val="002E62"/></w:rPr><w:t>Part ${part.partNumber} </w:t></w:r>
-        <w:r><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="334155"/></w:rPr><w:t>— Questions ${partQuestionStart}–${partQuestionEnd} [${part.questions.length} marks]</w:t></w:r>
+        <w:r><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="334155"/></w:rPr><w:t>— Questions ${partQuestionStart}–${partQuestionEnd} [${part.questions.reduce((a, b) => a + (b.mark || 1), 0)} marks]</w:t></w:r>
       </w:p>
       <w:p>
         <w:pPr><w:spacing w:before="60" w:after="120"/></w:pPr>
@@ -189,7 +184,7 @@ export async function exportCambridgeExamDocx(
       </w:p>
     `;
 
-    // If Part has a reading passage
+    // Reading passage if present
     if (part.passage) {
       docXml += `
         <w:tbl>
@@ -216,14 +211,15 @@ export async function exportCambridgeExamDocx(
       `;
     }
 
-    // Render questions in this part
+    // Render questions
     part.questions.forEach((q: CambridgeQuestion) => {
+      const qMark = q.mark || 1;
       docXml += `
         <w:p>
           <w:pPr><w:spacing w:before="140" w:after="60"/></w:pPr>
           <w:r><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="002E62"/></w:rPr><w:t>${questionIndex}. </w:t></w:r>
           <w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t>${escapeXml(q.question)}</w:t></w:r>
-          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="94A3B8"/></w:rPr><w:t>  [1 mark]</w:t></w:r>
+          <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="94A3B8"/></w:rPr><w:t>  [${qMark} mark${qMark > 1 ? 's' : ''}]</w:t></w:r>
         </w:p>
       `;
 
@@ -236,16 +232,29 @@ export async function exportCambridgeExamDocx(
         `;
       }
 
-      q.options.forEach((opt, optIdx) => {
-        const label = labels[optIdx] || `${optIdx + 1}`;
+      // If Multiple Choice Options
+      if (q.options && q.options.length > 0) {
+        q.options.forEach((opt, optIdx) => {
+          const label = labels[optIdx] || `${optIdx + 1}`;
+          docXml += `
+            <w:p>
+              <w:pPr><w:ind w:left="480"/><w:spacing w:after="30"/></w:pPr>
+              <w:r><w:rPr><w:b/><w:sz w:val="21"/><w:color w:val="1E293B"/></w:rPr><w:t>${label}. </w:t></w:r>
+              <w:r><w:rPr><w:sz w:val="21"/></w:rPr><w:t>${escapeXml(opt)}</w:t></w:r>
+            </w:p>
+          `;
+        });
+      } else if (q.questionType === 'short_writing' || part.partSkill === 'writing') {
+        // Writing area lines for candidate
         docXml += `
-          <w:p>
-            <w:pPr><w:ind w:left="480"/><w:spacing w:after="30"/></w:pPr>
-            <w:r><w:rPr><w:b/><w:sz w:val="21"/><w:color w:val="1E293B"/></w:rPr><w:t>${label}. </w:t></w:r>
-            <w:r><w:rPr><w:sz w:val="21"/></w:rPr><w:t>${escapeXml(opt)}</w:t></w:r>
+          <w:p><w:pPr><w:ind w:left="360"/><w:spacing w:before="60" w:after="60"/></w:pPr>
+            <w:r><w:rPr><w:sz w:val="20"/><w:color w:val="94A3B8"/></w:rPr><w:t>[Write your answer here / Viết câu trả lời vào các dòng kẻ dưới đây]:</w:t></w:r>
           </w:p>
+          <w:p><w:pPr><w:ind w:left="360"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:color w:val="CBD5E1"/></w:r><w:t>____________________________________________________________________________</w:t></w:r></w:p>
+          <w:p><w:pPr><w:ind w:left="360"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:color w:val="CBD5E1"/></w:r><w:t>____________________________________________________________________________</w:t></w:r></w:p>
+          <w:p><w:pPr><w:ind w:left="360"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:color w:val="CBD5E1"/></w:r><w:t>____________________________________________________________________________</w:t></w:r></w:p>
         `;
-      });
+      }
 
       questionIndex += 1;
     });
@@ -257,9 +266,45 @@ export async function exportCambridgeExamDocx(
       <w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="240"/></w:pPr>
       <w:r><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="475569"/></w:rPr><w:t>---------- END OF QUESTION PAPER ----------</w:t></w:r>
     </w:p>
-    <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+  `;
 
-    <!-- Page 2: Cambridge Marking Scheme & Answer Key -->
+  // Listening Script Section (if exam has listening)
+  if (exam.hasListening || exam.fullListeningScript) {
+    docXml += `
+      <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+      <w:p>
+        <w:pPr><w:jc w:val="center"/><w:spacing w:after="60"/></w:pPr>
+        <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:color w:val="64748B"/></w:rPr><w:t>CAMBRIDGE ASSESSMENT ENGLISH — CONFIDENTIAL</w:t></w:r>
+      </w:p>
+      <w:p>
+        <w:pPr><w:jc w:val="center"/><w:spacing w:after="100"/></w:pPr>
+        <w:r><w:rPr><w:b/><w:sz w:val="26"/><w:color w:val="002E62"/></w:rPr><w:t>LISTENING AUDIO RECORDING SCRIPT (TRANSCRIPT)</w:t></w:r>
+      </w:p>
+      <w:p>
+        <w:pPr><w:jc w:val="center"/><w:spacing w:after="140"/></w:pPr>
+        <w:r><w:rPr><w:i/><w:sz w:val="20"/><w:color w:val="475569"/></w:rPr><w:t>Giám thị phòng thi có thể phát âm thanh trực tiếp trên ứng dụng hoặc đọc kịch bản dưới đây.</w:t></w:r>
+      </w:p>
+    `;
+
+    const scriptText = exam.fullListeningScript || exam.parts
+      .filter((p) => p.audioScript || p.questions.some((q) => q.audioScript))
+      .map((p) => `[${p.title}]\n${p.audioScript || p.questions.map((q) => q.audioScript).filter(Boolean).join('\n')}`)
+      .join('\n\n');
+
+    scriptText.split('\n').forEach((line) => {
+      const isHeader = line.startsWith('---') || line.startsWith('[') || line.startsWith('Narrator:');
+      docXml += `
+        <w:p>
+          <w:pPr><w:spacing w:after="40"/></w:pPr>
+          <w:r><w:rPr><w:b w:val="${isHeader ? 'true' : 'false'}"/><w:sz w:val="21"/><w:color w:val="${isHeader ? '002E62' : '334155'}"/></w:rPr><w:t>${escapeXml(line)}</w:t></w:r>
+        </w:p>
+      `;
+    });
+  }
+
+  // Answer Key & Marking Scheme
+  docXml += `
+    <w:p><w:r><w:br w:type="page"/></w:r></w:p>
     <w:p>
       <w:pPr><w:jc w:val="center"/><w:spacing w:after="60"/></w:pPr>
       <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:color w:val="64748B"/></w:rPr><w:t>CAMBRIDGE ASSESSMENT ENGLISH</w:t></w:r>
@@ -287,23 +332,37 @@ export async function exportCambridgeExamDocx(
         </w:tblBorders>
       </w:tblPr>
       <w:tr>
-        <w:tc><w:tcPr><w:tcW w:w="1000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Item</w:t></w:r></w:p></w:tc>
-        <w:tc><w:tcPr><w:tcW w:w="1100" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Key</w:t></w:r></w:p></w:tc>
-        <w:tc><w:tcPr><w:tcW w:w="2500" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Skill / Focus Area</w:t></w:r></w:p></w:tc>
-        <w:tc><w:tcPr><w:tcW w:w="4800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Explanatory Rationale &amp; Evidence</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="900" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Item</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1200" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Key / Type</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Skill / Focus Area</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="4900" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="002E62"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t>Explanatory Rationale &amp; Evidence</w:t></w:r></w:p></w:tc>
       </w:tr>
   `;
 
   let qCount = 1;
   exam.parts.forEach((part) => {
     part.questions.forEach((q) => {
-      const correctLetter = labels[q.correctIndex] || `Option ${q.correctIndex + 1}`;
+      const isShortWriting = q.questionType === 'short_writing' || part.partSkill === 'writing';
+      const isSpeaking = q.questionType === 'speaking_prompt' || part.partSkill === 'speaking';
+
+      let correctLetter = labels[q.correctIndex] || `Key ${q.correctIndex + 1}`;
+      if (isShortWriting) correctLetter = 'Writing';
+      if (isSpeaking) correctLetter = 'Speaking';
+
+      let rationale = q.explanation || 'Correct based on curriculum material.';
+      if (q.sampleAnswer) {
+        rationale += ` | Model Answer: "${q.sampleAnswer}"`;
+      }
+      if (q.scoringRubric) {
+        rationale += ` | Rubric: ${q.scoringRubric}`;
+      }
+
       docXml += `
         <w:tr>
-          <w:tc><w:tcPr><w:tcW w:w="1000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Q${qCount}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcW w:w="1100" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="24"/><w:color w:val="047857"/></w:rPr><w:t>${correctLetter}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcW w:w="2500" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>${escapeXml(q.focusArea || 'Language Focus')}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcW w:w="4800" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>${escapeXml(q.explanation || 'Correct based on curriculum material.')}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="900" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Q${qCount}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1200" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="047857"/></w:rPr><w:t>${escapeXml(correctLetter)}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr><w:sz w:val="20"/><w:color w:val="334155"/></w:rPr><w:t>${escapeXml(q.focusArea || 'Language Focus')}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="4900" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>${escapeXml(rationale)}</w:t></w:r></w:p></w:tc>
         </w:tr>
       `;
       qCount += 1;
@@ -355,17 +414,39 @@ export function generateCambridgePrintHtml(
       const questionsHtml = part.questions
         .map((q, idx) => {
           const currentNumber = qStart + idx;
-          const optionsHtml = q.options
-            .map((opt, optIdx) => {
-              const label = labels[optIdx] || `${optIdx + 1}`;
-              return `
-                <div class="option-item">
-                  <span class="option-label"><strong>${label}</strong></span>
-                  <span class="option-text">${escapeHtml(opt)}</span>
+          const qMark = q.mark || 1;
+          const isWriting = q.questionType === 'short_writing' || part.partSkill === 'writing';
+          const isSpeaking = q.questionType === 'speaking_prompt' || part.partSkill === 'speaking';
+
+          let optionsHtml = '';
+          if (q.options && q.options.length > 0) {
+            optionsHtml = `
+              <div class="options-grid">
+                ${q.options
+                  .map((opt, optIdx) => {
+                    const label = labels[optIdx] || `${optIdx + 1}`;
+                    return `
+                      <div class="option-item">
+                        <span class="option-label"><strong>${label}</strong></span>
+                        <span class="option-text">${escapeHtml(opt)}</span>
+                      </div>
+                    `;
+                  })
+                  .join('')}
+              </div>
+            `;
+          } else if (isWriting) {
+            optionsHtml = `
+              <div class="writing-answer-space">
+                <div class="writing-lines">
+                  <div class="line"></div>
+                  <div class="line"></div>
+                  <div class="line"></div>
+                  <div class="line"></div>
                 </div>
-              `;
-            })
-            .join('');
+              </div>
+            `;
+          }
 
           return `
             <div class="question-block">
@@ -378,12 +459,15 @@ export function generateCambridgePrintHtml(
                       ? `<div class="q-context">"${escapeHtml(q.contextText)}"</div>`
                       : ''
                   }
+                  ${
+                    isSpeaking
+                      ? `<div class="speaking-badge">🗣 Examiner Prompt: Listen &amp; Respond with full sentences</div>`
+                      : ''
+                  }
                 </div>
-                <span class="q-mark">[1]</span>
+                <span class="q-mark">[${qMark}]</span>
               </div>
-              <div class="options-grid">
-                ${optionsHtml}
-              </div>
+              ${optionsHtml}
             </div>
           `;
         })
@@ -392,8 +476,8 @@ export function generateCambridgePrintHtml(
       return `
         <div class="part-section">
           <div class="part-banner">
-            <span class="part-title">Part ${part.partNumber}</span>
-            <span class="part-meta">Questions ${qStart}–${qEnd} (${part.questions.length} marks)</span>
+            <span class="part-title">Part ${part.partNumber} (${part.title})</span>
+            <span class="part-meta">Questions ${qStart}–${qEnd} (${part.questions.reduce((a, b) => a + (b.mark || 1), 0)} marks)</span>
           </div>
           <p class="part-instructions"><em>${escapeHtml(part.instructions)}</em></p>
           ${
@@ -414,18 +498,60 @@ export function generateCambridgePrintHtml(
   let rowIdx = 1;
   exam.parts.forEach((part) => {
     part.questions.forEach((q) => {
-      const correctLetter = labels[q.correctIndex] || `${q.correctIndex + 1}`;
+      const isWriting = q.questionType === 'short_writing' || part.partSkill === 'writing';
+      const isSpeaking = q.questionType === 'speaking_prompt' || part.partSkill === 'speaking';
+
+      let correctKey = labels[q.correctIndex] || `${q.correctIndex + 1}`;
+      if (isWriting) correctKey = 'Writing';
+      if (isSpeaking) correctKey = 'Speaking';
+
+      let explanationText = escapeHtml(q.explanation || 'Correct based on lesson material.');
+      if (q.sampleAnswer) {
+        explanationText += `<div class="sample-ans"><strong>Model Answer:</strong> "${escapeHtml(q.sampleAnswer)}"</div>`;
+      }
+      if (q.scoringRubric) {
+        explanationText += `<div class="rubric-text"><strong>Rubric:</strong> ${escapeHtml(q.scoringRubric)}</div>`;
+      }
+
       answerRows += `
         <tr>
           <td class="text-center font-bold">Q${rowIdx}</td>
-          <td class="text-center font-bold text-emerald-700 bg-emerald-50">${correctLetter}</td>
+          <td class="text-center font-bold text-emerald-700 bg-emerald-50">${correctKey}</td>
           <td><span class="skill-badge">${escapeHtml(q.focusArea || 'Language Focus')}</span></td>
-          <td>${escapeHtml(q.explanation || 'Correct based on lesson material.')}</td>
+          <td>${explanationText}</td>
         </tr>
       `;
       rowIdx += 1;
     });
   });
+
+  // Audio Script section for PDF
+  let audioTranscriptHtml = '';
+  if (exam.hasListening || exam.fullListeningScript) {
+    const script = exam.fullListeningScript || exam.parts
+      .filter((p) => p.audioScript || p.questions.some((q) => q.audioScript))
+      .map((p) => `[${p.title}]\n${p.audioScript || p.questions.map((q) => q.audioScript).filter(Boolean).join('\n')}`)
+      .join('\n\n');
+
+    audioTranscriptHtml = `
+      <div class="page-break"></div>
+      <div class="exam-header-banner">
+        <div class="inst-name">CAMBRIDGE ASSESSMENT ENGLISH — CONFIDENTIAL RECORDING SCRIPT</div>
+        <h1 class="exam-title">LISTENING AUDIO SCRIPT (TRANSCRIPT)</h1>
+        <div class="paper-name">${escapeHtml(exam.title)} | Code: ${escapeHtml(exam.examCode)}</div>
+      </div>
+      <div class="transcript-box">
+        ${script
+          .split('\n')
+          .filter((l) => l.trim().length > 0)
+          .map((line) => {
+            const isSpeaker = line.includes(':');
+            return `<div class="transcript-line ${isSpeaker ? 'speaker' : ''}">${escapeHtml(line)}</div>`;
+          })
+          .join('')}
+      </div>
+    `;
+  }
 
   return `<!DOCTYPE html>
 <html lang="vi">
@@ -448,359 +574,390 @@ export function generateCambridgePrintHtml(
     .print-toolbar {
       position: sticky;
       top: 0;
-      z-index: 100;
       background: #002e62;
       color: #ffffff;
       padding: 10px 20px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      z-index: 1000;
     }
-    .toolbar-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-    .toolbar-actions { display: flex; gap: 10px; }
-    .btn-action {
+    .print-btn {
       background: #ffffff;
       color: #002e62;
       border: none;
-      padding: 7px 14px;
-      font-weight: 700;
-      font-size: 12px;
+      padding: 8px 18px;
+      font-weight: bold;
       border-radius: 6px;
       cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.15s;
+      font-size: 13px;
     }
-    .btn-action:hover { background: #f1f5f9; transform: translateY(-1px); }
-    .btn-action-primary { background: #c91c24; color: #ffffff; }
-    .btn-action-primary:hover { background: #b01820; }
-    .paper-container {
+    .print-btn:hover { background: #f1f5f9; }
+    .page-container {
       max-width: 210mm;
       margin: 0 auto;
-      padding: 20px 24px;
+      padding: 15mm 12mm;
     }
-    /* Cambridge Header */
-    .cambridge-header {
+    .exam-header-banner {
       text-align: center;
       border-bottom: 2px solid #002e62;
       padding-bottom: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
-    .inst-name { font-size: 11pt; font-weight: 700; color: #475569; letter-spacing: 0.05em; text-transform: uppercase; }
-    .qual-name { font-size: 16pt; font-weight: 800; color: #002e62; margin: 4px 0; letter-spacing: -0.01em; }
-    .paper-name { font-size: 12pt; font-weight: 700; color: #c91c24; }
-    .meta-line { font-size: 9.5pt; color: #475569; margin-top: 6px; }
-    
-    /* Candidate Info Box */
-    .candidate-box {
-      border: 1.5px solid #002e62;
-      border-radius: 4px;
-      margin-bottom: 16px;
-      background: #f8fafc;
-      overflow: hidden;
+    .inst-name {
+      font-size: 10pt;
+      font-weight: bold;
+      color: #64748b;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
     }
-    .candidate-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid #cbd5e1;
+    .exam-title {
+      font-size: 18pt;
+      font-weight: 800;
+      color: #002e62;
+      margin: 4px 0;
+      letter-spacing: 0.5px;
     }
-    .candidate-row:last-child { border-bottom: none; }
-    .candidate-cell {
-      padding: 6px 12px;
+    .paper-name {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #1e3a8a;
+    }
+    .exam-meta-line {
       font-size: 9.5pt;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      font-style: italic;
+      color: #475569;
+      margin-top: 4px;
     }
-    .candidate-cell:first-child { border-right: 1px solid #cbd5e1; }
-    .box-grid { display: inline-flex; gap: 4px; }
-    .num-box {
-      width: 18px;
-      height: 20px;
-      border: 1px solid #64748b;
-      background: #ffffff;
-      display: inline-block;
+    .candidate-box {
+      width: 100%;
+      border: 1.5px solid #002e62;
+      border-collapse: collapse;
+      margin-bottom: 16px;
     }
-
-    /* Instructions */
+    .candidate-box td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 10px;
+      font-size: 9.5pt;
+    }
+    .candidate-label {
+      font-weight: bold;
+      color: #475569;
+      font-size: 8pt;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .candidate-dots {
+      color: #94a3b8;
+      font-size: 11pt;
+      letter-spacing: 2px;
+    }
     .instructions-box {
-      background: #f1f5f9;
+      background: #f8fafc;
       border-left: 3px solid #002e62;
       padding: 8px 12px;
-      font-size: 9pt;
       margin-bottom: 20px;
-      line-height: 1.4;
+      font-size: 9.5pt;
     }
-    .instructions-box strong { color: #002e62; display: block; margin-bottom: 2px; }
-    .instructions-box ul { padding-left: 18px; }
-
-    /* Parts */
+    .instructions-box h4 {
+      color: #002e62;
+      font-size: 9.5pt;
+      margin-bottom: 4px;
+    }
+    .instructions-box ul {
+      margin-left: 18px;
+      color: #334155;
+    }
     .part-section {
       margin-bottom: 24px;
-      break-inside: avoid;
     }
     .part-banner {
-      background: #002e62;
-      color: #ffffff;
-      padding: 4px 10px;
-      border-radius: 3px;
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
+      align-items: baseline;
+      border-bottom: 1.5px solid #002e62;
+      background: #f1f5f9;
+      padding: 6px 10px;
+      margin-bottom: 6px;
     }
-    .part-title { font-weight: 800; font-size: 11pt; letter-spacing: 0.02em; }
-    .part-meta { font-size: 9pt; opacity: 0.9; }
-    .part-instructions { font-size: 9.5pt; color: #334155; margin-bottom: 10px; }
+    .part-title {
+      font-size: 12pt;
+      font-weight: bold;
+      color: #002e62;
+    }
+    .part-meta {
+      font-size: 9.5pt;
+      font-weight: 600;
+      color: #334155;
+    }
+    .part-instructions {
+      font-size: 10pt;
+      color: #475569;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
     .passage-box {
       border: 1px solid #94a3b8;
-      border-left: 4px solid #002e62;
+      border-left: 3px solid #002e62;
       background: #f8fafc;
       padding: 10px 14px;
-      font-size: 10pt;
+      margin-bottom: 14px;
       font-style: italic;
-      margin-bottom: 12px;
-      border-radius: 2px;
-      line-height: 1.5;
+      line-height: 1.55;
+      font-size: 10.5pt;
     }
-
-    /* Questions */
     .question-block {
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px dashed #e2e8f0;
-      break-inside: avoid;
+      margin-bottom: 14px;
+      page-break-inside: avoid;
     }
     .question-header {
       display: flex;
       align-items: baseline;
-      gap: 6px;
+      gap: 8px;
       margin-bottom: 6px;
     }
-    .q-num { font-weight: 800; color: #002e62; font-size: 10.5pt; min-width: 22px; }
-    .q-content { flex: 1; }
-    .q-text { font-weight: 600; font-size: 10.5pt; color: #0f172a; }
-    .q-context { font-size: 9.5pt; font-style: italic; color: #475569; margin-top: 2px; }
-    .q-mark { font-size: 9pt; color: #94a3b8; margin-left: auto; font-weight: 600; }
-    
+    .q-num {
+      font-weight: bold;
+      color: #002e62;
+      font-size: 11pt;
+      min-width: 22px;
+    }
+    .q-content {
+      flex: 1;
+    }
+    .q-text {
+      font-size: 11pt;
+      font-weight: 500;
+    }
+    .q-context {
+      font-size: 9.5pt;
+      color: #475569;
+      font-style: italic;
+      margin-top: 2px;
+    }
+    .speaking-badge {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 8.5pt;
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .writing-answer-space {
+      margin-left: 28px;
+      margin-top: 8px;
+    }
+    .writing-lines .line {
+      border-bottom: 1px dashed #cbd5e1;
+      height: 24px;
+      width: 100%;
+    }
+    .q-mark {
+      font-size: 9pt;
+      color: #94a3b8;
+    }
     .options-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 4px 12px;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
       margin-left: 28px;
     }
     .option-item {
-      font-size: 10pt;
       display: flex;
       align-items: baseline;
       gap: 6px;
+      font-size: 10.5pt;
     }
     .option-label {
-      display: inline-block;
-      width: 18px;
-      font-weight: 700;
-      color: #002e62;
+      color: #1e293b;
+      min-width: 18px;
     }
-    .option-text { color: #1e293b; }
-
-    /* End divider */
-    .end-paper {
-      text-align: center;
-      margin: 28px 0;
-      font-weight: 700;
-      font-size: 10pt;
-      color: #64748b;
-      letter-spacing: 0.1em;
-    }
-
-    /* Page break for marking scheme */
     .page-break {
       page-break-before: always;
-      break-before: page;
-      margin-top: 20px;
+      margin-top: 30px;
     }
-
-    /* Marking scheme table */
-    .answer-table {
+    .answers-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 9.5pt;
-      margin-top: 14px;
+      margin-top: 12px;
     }
-    .answer-table th, .answer-table td {
-      border: 1px solid #cbd5e1;
-      padding: 6px 10px;
-      text-align: left;
-    }
-    .answer-table th {
+    .answers-table th {
       background: #002e62;
       color: #ffffff;
-      font-weight: 700;
+      padding: 8px 10px;
+      font-size: 9.5pt;
+      text-align: left;
+    }
+    .answers-table td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+      font-size: 9.5pt;
+      vertical-align: top;
+    }
+    .answers-table tr:nth-child(even) {
+      background: #f8fafc;
     }
     .skill-badge {
       display: inline-block;
-      background: #f1f5f9;
-      color: #1e3a8a;
       padding: 2px 6px;
+      background: #e2e8f0;
+      color: #334155;
       border-radius: 4px;
-      font-size: 8.5pt;
+      font-size: 8pt;
       font-weight: 600;
     }
-    .text-center { text-align: center; }
-    .font-bold { font-weight: 700; }
-    .text-emerald-700 { color: #047857; }
-    .bg-emerald-50 { background: #ecfdf5; }
-
+    .sample-ans {
+      margin-top: 4px;
+      font-size: 9pt;
+      color: #0369a1;
+      background: #f0f9ff;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .rubric-text {
+      margin-top: 2px;
+      font-size: 8.5pt;
+      color: #64748b;
+      font-style: italic;
+    }
+    .transcript-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-left: 4px solid #002e62;
+      padding: 14px 18px;
+      border-radius: 6px;
+      margin-top: 14px;
+      font-size: 10pt;
+      line-height: 1.6;
+    }
+    .transcript-line {
+      margin-bottom: 6px;
+    }
+    .transcript-line.speaker {
+      font-weight: 600;
+      color: #002e62;
+    }
+    .end-paper-tag {
+      text-align: center;
+      font-weight: bold;
+      color: #64748b;
+      margin: 30px 0;
+      font-size: 10.5pt;
+      letter-spacing: 1px;
+    }
     @media print {
       .print-toolbar { display: none !important; }
-      body { background: #ffffff; }
-      .paper-container { padding: 0; max-width: 100%; }
-      .page-break { page-break-before: always; break-before: page; }
+      body { background: #ffffff !important; }
+      .page-container { padding: 0 !important; width: 100% !important; max-width: 100% !important; }
     }
   </style>
 </head>
 <body>
   <div class="print-toolbar">
-    <div class="toolbar-title">
-      <span>🏛️</span>
-      <span>Cambridge Assessment English — Bản in Đề thi A4 & Xuất PDF</span>
+    <div>
+      <strong>Interactive Academic Hub</strong> — Cambridge Assessment Print Mode
     </div>
-    <div class="toolbar-actions">
-      <button type="button" class="btn-action btn-action-primary" onclick="window.print()">
-        🖨️ In / Lưu thành file PDF (Ctrl + P)
-      </button>
-      <button type="button" class="btn-action" onclick="window.close()">
-        ✕ Đóng
-      </button>
-    </div>
+    <button class="print-btn" onclick="window.print()">In hoặc Lưu PDF (Ctrl + P)</button>
   </div>
 
-  <div class="paper-container">
+  <div class="page-container">
     <!-- Header -->
-    <div class="cambridge-header">
+    <div class="exam-header-banner">
       <div class="inst-name">${escapeHtml(institutionName || 'CAMBRIDGE ASSESSMENT ENGLISH')}</div>
-      <div class="qual-name">${escapeHtml(exam.qualificationName.toUpperCase())}</div>
+      <h1 class="exam-title">${escapeHtml(exam.qualificationName.toUpperCase())}</h1>
       <div class="paper-name">${escapeHtml(exam.paperName)}</div>
-      <div class="meta-line">
-        Exam Code: <strong>${escapeHtml(exam.examCode)}</strong> &nbsp;|&nbsp; 
-        Time allowed: <strong>${exam.timeMinutes} minutes</strong> &nbsp;|&nbsp; 
-        Total marks: <strong>${exam.totalMarks} marks</strong>
+      <div class="exam-meta-line">
+        Paper Code: ${escapeHtml(exam.examCode)} | Time allowed: ${exam.timeMinutes} minutes | Total score: ${exam.totalMarks} marks
       </div>
     </div>
 
     <!-- Candidate Box -->
-    <div class="candidate-box">
-      <div class="candidate-row">
-        <div class="candidate-cell">
-          <strong>Centre Number:</strong>
-          <span class="box-grid">
-            <span class="num-box"></span><span class="num-box"></span><span class="num-box"></span><span class="num-box"></span><span class="num-box"></span>
-          </span>
-        </div>
-        <div class="candidate-cell">
-          <strong>Candidate Number:</strong>
-          <span class="box-grid">
-            <span class="num-box"></span><span class="num-box"></span><span class="num-box"></span><span class="num-box"></span>
-          </span>
-        </div>
-      </div>
-      <div class="candidate-row">
-        <div class="candidate-cell">
-          <strong>Candidate Name:</strong>
-          <span>................................................................</span>
-        </div>
-        <div class="candidate-cell">
-          <strong>Class / Date:</strong>
-          <span>................................................................</span>
-        </div>
-      </div>
-    </div>
+    <table class="candidate-box">
+      <tr>
+        <td style="width: 35%;">
+          <div class="candidate-label">CENTRE NUMBER</div>
+          <div class="candidate-dots">[ VN _ _ _ ]</div>
+        </td>
+        <td style="width: 35%;">
+          <div class="candidate-label">CANDIDATE NUMBER</div>
+          <div class="candidate-dots">[ _ _ _ _ ]</div>
+        </td>
+        <td style="width: 30%;">
+          <div class="candidate-label">EXAM DATE</div>
+          <div style="font-weight: 600; color: #002e62;">${escapeHtml(exam.generatedAt)}</div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3">
+          <div class="candidate-label">CANDIDATE NAME (Họ và tên thí sinh):</div>
+          <div style="color: #cbd5e1; letter-spacing: 2px;">________________________________________________________________________________________</div>
+        </td>
+      </tr>
+    </table>
 
     <!-- Instructions -->
     <div class="instructions-box">
-      <strong>INSTRUCTIONS TO CANDIDATES:</strong>
+      <h4>INSTRUCTIONS TO CANDIDATES:</h4>
       <ul>
-        <li>Write your name, centre number and candidate number in the spaces at the top of this page.</li>
-        <li>Answer all questions. Write your answers on the question paper.</li>
-        <li>Read the instructions for each part carefully before answering.</li>
-        <li>Dictionaries and electronic devices are NOT permitted.</li>
+        ${exam.instructionsToCandidates.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}
       </ul>
     </div>
 
-    <!-- Parts List -->
+    <!-- Parts & Questions -->
     ${partsHtml}
 
-    <div class="end-paper">---------- END OF QUESTION PAPER ----------</div>
+    <div class="end-paper-tag">---------- END OF QUESTION PAPER ----------</div>
 
-    <!-- Page Break for Answer Key -->
-    <div class="page-break">
-      <div class="cambridge-header">
-        <div class="inst-name">${escapeHtml(institutionName || 'CAMBRIDGE ASSESSMENT ENGLISH')}</div>
-        <div class="qual-name">MARKING SCHEME &amp; EXPLANATORY ANSWER KEY</div>
-        <div class="meta-line">
-          ${escapeHtml(exam.qualificationName)} &nbsp;|&nbsp; 
-          ${escapeHtml(exam.paperName)} &nbsp;|&nbsp; 
-          Total: ${exam.totalMarks} marks
-        </div>
-      </div>
+    <!-- Listening Audio Script if present -->
+    ${audioTranscriptHtml}
 
-      <table class="answer-table">
-        <thead>
-          <tr>
-            <th style="width: 10%; text-align: center;">Item</th>
-            <th style="width: 12%; text-align: center;">Key</th>
-            <th style="width: 28%;">Skill / Focus Area</th>
-            <th style="width: 50%;">Explanatory Rationale &amp; Evidence</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${answerRows}
-        </tbody>
-      </table>
+    <!-- Answer Key & Marking Scheme -->
+    <div class="page-break"></div>
+    <div class="exam-header-banner">
+      <div class="inst-name">CAMBRIDGE ASSESSMENT ENGLISH</div>
+      <h1 class="exam-title">MARKING SCHEME &amp; EXPLANATORY ANSWER KEY</h1>
+      <div class="paper-name">${escapeHtml(exam.qualificationName)} — ${escapeHtml(exam.paperName)}</div>
     </div>
+
+    <table class="answers-table">
+      <thead>
+        <tr>
+          <th style="width: 60px; text-align: center;">Item</th>
+          <th style="width: 80px; text-align: center;">Key</th>
+          <th style="width: 170px;">Skill / Focus Area</th>
+          <th>Explanatory Rationale &amp; Evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${answerRows}
+      </tbody>
+    </table>
   </div>
 </body>
 </html>`;
 }
 
 /**
- * 3. Xuất file PDF theo chuẩn bài thi Cambridge (Mở cửa sổ in chuyên dụng với phím tắt Lưu PDF)
+ * 3. Mở cửa sổ in PDF chuẩn Cambridge A4
  */
-export function exportCambridgeExamPdf(
+export async function exportCambridgeExamPdf(
   exam: CambridgeExam,
   institutionName?: string
-): void {
+): Promise<void> {
   const htmlContent = generateCambridgePrintHtml(exam, institutionName);
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    throw new Error('Trình duyệt đã chặn cửa sổ Popup. Vui lòng cho phép popup để mở bản in PDF.');
+    throw new Error('Trình duyệt đã chặn cửa sổ Popup. Vui lòng cho phép Pop-up để mở bản in PDF.');
   }
 
   printWindow.document.open();
   printWindow.document.write(htmlContent);
   printWindow.document.close();
 
-  // Auto trigger native print dialog once loaded
-  printWindow.onload = () => {
-    setTimeout(() => {
-      try {
-        printWindow.focus();
-        printWindow.print();
-      } catch {
-        // User can click button in toolbar
-      }
-    }, 400);
-  };
-}
-
-function escapeHtml(unsafe: string | null | undefined): string {
-  if (!unsafe) return '';
-  return String(unsafe)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  setTimeout(() => {
+    printWindow.focus();
+  }, 400);
 }

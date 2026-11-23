@@ -20,7 +20,7 @@ import PortabilityConsole, { type DirectoryStateInfo } from './components/Portab
 import BrandingConsole from './components/BrandingConsole';
 import ConceptMapView from './components/ConceptMapView';
 import LearningAnalyticsDashboard from './components/LearningAnalyticsDashboard';
-import AiSettingsModal, { getSavedApiKey } from './components/AiSettingsModal';
+import AiSettingsModal, { getSavedApiKey, getSavedOpenAiApiKey, getSavedAiProvider } from './components/AiSettingsModal';
 import ContentFormModal, { type ModalTarget } from './components/ContentFormModal';
 import EditNodeModal, { type EditTarget } from './components/EditNodeModal';
 
@@ -70,7 +70,7 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
-    setHasApiKey(Boolean(getSavedApiKey()));
+    setHasApiKey(Boolean(getSavedApiKey() || getSavedOpenAiApiKey()));
   }, []);
 
   const notify = useCallback((message: string, tone: 'success' | 'error' | 'info' = 'info') => {
@@ -995,9 +995,10 @@ export default function App() {
       <AiSettingsModal
         isOpen={isAiSettingsOpen}
         onClose={() => setIsAiSettingsOpen(false)}
-        onSaved={(key, model) => {
+        onSaved={(key, model, provider) => {
           setHasApiKey(Boolean(key));
-          notify(`Đã kết nối Google Gemini API (${model}) thành công!`, 'success');
+          const provName = provider === 'openai' ? 'OpenAI ChatGPT' : 'Google Gemini';
+          notify(`Đã kết nối ${provName} (${model}) thành công!`, 'success');
         }}
       />
 

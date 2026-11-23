@@ -1,12 +1,20 @@
 import type { Book, Lesson, Unit } from '../types/academic';
 import type {
+  AiProvider,
   CambridgeExam,
+  CambridgeExamType,
   CambridgeGeneratorConfig,
   CambridgeLevel,
   CambridgePart,
   CambridgeQuestion,
 } from '../types/cambridge';
-import { getSavedApiKey, getSavedModel } from '../components/AiSettingsModal';
+import {
+  getSavedAiProvider,
+  getSavedApiKey,
+  getSavedModel,
+  getSavedOpenAiApiKey,
+  getSavedOpenAiModel,
+} from '../components/AiSettingsModal';
 
 /**
  * Trích xuất ngữ cảnh học thuật và từ vựng từ các bài học được chọn
@@ -38,18 +46,15 @@ export function extractLessonKnowledge(lessons: Lesson[]): {
 
       // 2. From HTML5 content
       if (c.htmlContent) {
-        // Strip scripts & styles
         const noScripts = c.htmlContent
           .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
           .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
 
-        // Extract bold words, headers, and text
         const textOnly = noScripts.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         if (textOnly.length > 30) {
           readingPassages.push(textOnly.slice(0, 1200));
         }
 
-        // Try extracting vocabulary pairs like "boyfriend ... bạn trai", "tall ... cao"
         const vocabMatches = [
           ...noScripts.matchAll(/([a-zA-Z\s\-]{3,20})[\s\:\–\—\-\/]+([a-zA-Z\u00C0-\u1EF9\s]{3,30})/g),
         ];
@@ -74,16 +79,15 @@ export function extractLessonKnowledge(lessons: Lesson[]): {
     });
   });
 
-  // Deduplicate vocab
   const uniqueVocab = Array.from(new Map(vocabularies.map((v) => [v.word.toLowerCase(), v])).values()).slice(
     0,
-    30
+    35
   );
 
   const fullContextSummary = `
 - Các chủ đề bài học: ${topics.join(', ')}
-- Từ vựng trọng tâm ghi nhận: ${uniqueVocab.map((v) => `${v.word} (${v.meaning})`).join(', ') || 'Từ vựng tiếng Anh theo bài'}
-- Mẫu câu & ngữ cảnh thực tế: ${sentences.slice(0, 6).join(' | ') || 'Các mẫu câu giao tiếp và ngữ pháp theo giáo trình.'}
+- Từ vựng trọng tâm: ${uniqueVocab.map((v) => `${v.word} (${v.meaning})`).join(', ') || 'Từ vựng tiếng Anh theo bài'}
+- Mẫu câu & ngữ cảnh thực tế: ${sentences.slice(0, 8).join(' | ') || 'Các mẫu câu giao tiếp và ngữ pháp theo giáo trình.'}
 - Bài đọc trích yếu: ${readingPassages.slice(0, 3).join('\n---\n')}
 `.trim();
 
@@ -97,7 +101,7 @@ export function extractLessonKnowledge(lessons: Lesson[]): {
 }
 
 /**
- * Tên cấp độ và paper chuẩn Cambridge
+ * Tên cấp độ và tiêu chuẩn Cambridge
  */
 export function getCambridgeLevelDetails(level: CambridgeLevel): {
   qualificationName: string;
@@ -121,7 +125,7 @@ export function getCambridgeLevelDetails(level: CambridgeLevel): {
     case 'gdpt_cambridge':
     default:
       return {
-        qualificationName: 'Đề Đánh Giá Định Kỳ (Chuẩn Định Dạng Cambridge)',
+        qualificationName: 'Đề Đánh Giá Định Kỳ (Chuẩn Quốc Tế Cambridge)',
         badge: 'Cambridge GDPT',
         defaultTime: 45,
         targetCefr: 'A1 - B1',
@@ -130,7 +134,104 @@ export function getCambridgeLevelDetails(level: CambridgeLevel): {
 }
 
 /**
- * Gọi Google Gemini API để tạo Đề thi Cambridge
+ * Tên định dạng môn thi
+ */
+export function getCambridgePaperTitle(examType: CambridgeExamType): string {
+  switch (examType) {
+    case 'listening':
+      return 'Listening Paper (Aural Comprehension)';
+    case 'reading':
+      return 'Reading Paper (Textual Analysis & Comprehension)';
+    case 'writing':
+      return 'Writing Paper (Communication & Extended Production)';
+    case 'speaking':
+      return 'Speaking Paper (Interview & Collaborative Task)';
+    case 'reading_and_writing':
+      return 'Reading and Writing Paper';
+    case 'listening_and_speaking':
+      return 'Listening and Speaking Interactive Paper';
+    case 'reading_and_use_of_english':
+      return 'Reading and Use of English Paper';
+    case 'comprehensive_4_skills':
+      return 'Comprehensive 4-Skills Examination (Listening, Reading, Writing, Speaking)';
+    case 'vocabulary_grammar_focus':
+      return 'Vocabulary and Grammar Mastery Paper';
+    case 'reading_comprehension':
+      return 'Reading Comprehension Paper';
+    case 'cloze_and_sentence':
+      return 'Cloze Test and Sentence Completion Paper';
+    default:
+      return 'Cambridge English Examination';
+  }
+}
+
+// Ngân hàng 30 chủ đề thi phong phú để chống lặp đề
+const CAMBRIDGE_EXAM_THEMES = [
+  'A Day at the British Science & Technology Museum',
+  'The Annual School Eco-Challenge and Tree Planting Project',
+  'Exploration of the Coastal Wildlife Sanctuary',
+  'The Young Chefs Culinary and Baking Competition',
+  'Adventures in the Scottish Highlands Camp',
+  'The City Marathon and Youth Charity Fun Run',
+  'High School Robotics and Future Tech Innovation',
+  'The Mystery of the Old Library Manuscript',
+  'An Unforgettable Weekend Trip to Cambridge University',
+  'The Youth Photography and Digital Arts Festival',
+  'Preparing for the International Student Exchange Fair',
+  'A Visit to the National Space Centre and Planetarium',
+  'Community Kindness Week and Elderly Care Initiative',
+  'The Inter-school Basketball and Athletics Championships',
+  'Living in a Smart Green City of Tomorrow',
+  'The Young Authors Creative Story Contest',
+  'Discovering Marine Life on the Coral Reef Expedition',
+  'The School Music Festival and Acoustic Band Finals',
+  'A Walking Tour of Historic London Landmarks',
+  'The Junior Meteorology Station and Weather Forecasting',
+  'Volunteering at the Urban Animal Rescue Shelter',
+  'A Bicycle Tour through Peaceful English Countryside Villages',
+  'The School Science Fair Innovation Awards',
+  'Healthy Living: Fitness Habits, Nutrition & Mental Wellbeing',
+  'A Weekend Workshop on Renewable Wind & Solar Energy',
+  'Discovering Ancient Roman History at Bath Spa',
+  'The High School Drama Club Shakespeare Production',
+  'Cultural Heritage Day: Traditions and Customs Worldwide',
+  'The City Youth Chess and Brain Game Tournament',
+  'An Educational Journey across National National Parks',
+];
+
+/**
+ * Trích xuất JSON từ chuỗi kết quả AI một cách an toàn
+ */
+function extractJsonFromAiResponse(raw: string): any {
+  if (!raw) throw new Error('Dữ liệu AI rỗng.');
+  const trimmed = raw.trim();
+
+  // Try direct parse
+  try {
+    return JSON.parse(trimmed);
+  } catch {}
+
+  // Try markdown code fence match
+  const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (match && match[1]) {
+    try {
+      return JSON.parse(match[1]);
+    } catch {}
+  }
+
+  // Try finding outermost brackets { ... }
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = trimmed.substring(firstBrace, lastBrace + 1);
+    return JSON.parse(candidate);
+  }
+
+  throw new Error('Không thể phân tích định dạng JSON từ phản hồi của mô hình AI.');
+}
+
+/**
+ * 1. Gọi Google Gemini API
  */
 async function callGeminiForCambridgeExam(
   prompt: string,
@@ -138,13 +239,13 @@ async function callGeminiForCambridgeExam(
   model: string
 ): Promise<any> {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model || 'gemini-3-flash-preview'
+    model || 'gemini-2.5-flash'
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
-      temperature: 0.3,
+      temperature: 0.85, // Sinh động, đa dạng, không lặp lại
       responseMimeType: 'application/json',
     },
   };
@@ -164,11 +265,60 @@ async function callGeminiForCambridgeExam(
   const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) throw new Error('Không nhận được nội dung từ Gemini.');
 
-  return JSON.parse(rawText);
+  return extractJsonFromAiResponse(rawText);
 }
 
 /**
- * Hàm sinh đề thi Cambridge thông minh bằng AI (hoặc bộ tạo mẫu sư phạm chuẩn nếu offline/chưa có key)
+ * 2. Gọi OpenAI / ChatGPT API
+ */
+async function callOpenAiForCambridgeExam(
+  prompt: string,
+  apiKey: string,
+  model: string
+): Promise<any> {
+  const endpoint = 'https://api.openai.com/v1/chat/completions';
+
+  const body = {
+    model: model || 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a Chief Examination Officer at Cambridge Assessment English. You write authentic, highly varied, non-repetitive Cambridge examination papers strictly according to CEFR standards and Cambridge official formats. Always return valid JSON.',
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    temperature: 0.85, // Sáng tạo, độc bản, đổi mới mỗi lần
+    response_format: { type: 'json_object' },
+  };
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || `OpenAI API returned status ${res.status}`);
+  }
+
+  const data = await res.json();
+  const rawText = data?.choices?.[0]?.message?.content;
+  if (!rawText) throw new Error('Không nhận được nội dung từ OpenAI.');
+
+  return extractJsonFromAiResponse(rawText);
+}
+
+/**
+ * Hàm sinh đề thi Cambridge thông minh bằng AI (ChatGPT hoặc Gemini)
+ * Tự động tạo Audio Script cho bài nghe, đa dạng hóa 4 kỹ năng và đề thi mới hoàn toàn mỗi lần
  */
 export async function generateCambridgeExamWithAi({
   book,
@@ -185,61 +335,136 @@ export async function generateCambridgeExamWithAi({
 }): Promise<CambridgeExam> {
   const knowledge = extractLessonKnowledge(lessons);
   const levelInfo = getCambridgeLevelDetails(config.level);
+  const paperTitle = getCambridgePaperTitle(config.examType);
 
-  const examCode = `CE/${levelInfo.badge.replace(/\s+/g, '')}/${Date.now().toString().slice(-4)}`;
-  const paperTitle =
-    config.examType === 'reading_and_use_of_english'
-      ? 'Reading and Use of English'
-      : config.examType === 'vocabulary_grammar_focus'
-      ? 'Vocabulary and Grammar Mastery'
-      : config.examType === 'reading_comprehension'
-      ? 'Reading Comprehension'
-      : 'Cloze Test and Sentence Completion';
+  const randomThematicContext =
+    CAMBRIDGE_EXAM_THEMES[Math.floor(Math.random() * CAMBRIDGE_EXAM_THEMES.length)] ||
+    'Cambridge International Youth Conference';
 
-  const userApiKey = getSavedApiKey();
-  const userModel = getSavedModel();
+  const randomSeed = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const examCode = `CE/${levelInfo.badge.replace(/\s+/g, '')}/${randomSeed.slice(-5).toUpperCase()}`;
 
-  if (userApiKey && userApiKey.trim()) {
-    try {
-      const prompt = `
-Bạn là Trưởng ban Khảo thí của Cambridge Assessment English (Item Writer & Assessment Specialist).
-Hãy soạn một đề thi tiếng Anh CHUẨN ĐỊNH DẠNG CAMBRIDGE ASSESSMENT ENGLISH dựa trên ngữ cảnh bài học sau:
+  // Determine which AI engine to use
+  const selectedProvider: AiProvider = config.provider || getSavedAiProvider();
+  const geminiKey = config.apiKey || getSavedApiKey();
+  const geminiModel = config.model || getSavedModel();
+  const openaiKey = config.apiKey || getSavedOpenAiApiKey();
+  const openaiModel = config.model || getSavedOpenAiModel();
 
-NGỮ CẢNH HỌC TẬP:
-- Giáo trình: ${book.title} (Khối: ${book.gradeLevel || 'A1-A2'})
-- Chương học: ${unit.title}
+  let aiEngineName = 'Smart Pedagogical Engine';
+
+  // Build specialized prompt depending on examType
+  let specializedSkillInstructions = '';
+
+  if (config.examType === 'listening') {
+    specializedSkillInstructions = `
+YÊU CẦU ĐẶC BIỆT CHO BÀI THI KỸ NĂNG NGHE (LISTENING):
+- Bạn PHẢI tạo kịch bản nghe hoàn chỉnh từng phần (audioScript) với lời thoại rõ ràng của từng nhân vật (Ví dụ: "Narrator: ...", "Boy: ...", "Girl: ...", "Shop assistant: ...", "Teacher: ...").
+- Cấu trúc các Part:
+  + Part 1: Nghe 5 đoạn hội thoại ngắn đời thường (mỗi câu có audioScript riêng 3-4 câu thoại, học sinh chọn tranh/đáp án A, B hoặc C).
+  + Part 2: Nghe một đoạn thông báo/độc thoại điền thông tin (Gap-fill note completion: Date, Time, Name, Price, Location).
+  + Part 3: Nghe một bài phỏng vấn/đoạn trò chuyện dài có nhiều thông tin (3-option MCQs A, B, C).
+- Bắt buộc trả về trường "fullListeningScript" chứa toàn bộ kịch bản lời thoại từ đầu đến cuối để hệ thống phát âm thanh hoặc in ra cho giám khảo.
+`;
+  } else if (config.examType === 'writing') {
+    specializedSkillInstructions = `
+YÊU CẦU ĐẶC BIỆT CHO BÀI THI KỸ NĂNG VIẾT (WRITING):
+- Cấu trúc các Part:
+  + Part 1: Sentence Transformations (Viết lại câu giữ nguyên nghĩa với từ gợi ý, 5 câu).
+  + Part 2: Short Communicative Message (Viết tin nhắn/email ngắn 35-50 từ trả lời đủ 3 câu hỏi gợi ý).
+  + Part 3: Extended Writing / Story (Viết câu chuyện hoặc bài viết 80-100 từ dựa trên câu mở đầu hoặc tranh gợi ý).
+- Với mỗi câu hỏi viết, bạn PHẢI cung cấp:
+  + "sampleAnswer": Đoạn văn mẫu đạt điểm tối đa (Band 5/5 chuẩn Cambridge).
+  + "scoringRubric": Tiêu chí chấm điểm chi tiết (Nội dung, Đạt mục đích giao tiếp, Bố cục, Từ vựng & Ngữ pháp).
+`;
+  } else if (config.examType === 'speaking') {
+    specializedSkillInstructions = `
+YÊU CẦU ĐẶC BIỆT CHO BÀI THI KỸ NĂNG NÓI (SPEAKING):
+- Cấu trúc các Part:
+  + Part 1: Phỏng vấn cá nhân (Examiner Questions: Hobbies, School life, Family, Weekend activities). Có audioScript lời đọc câu hỏi của giám khảo.
+  + Part 2: Thảo luận tình huống / Miêu tả tranh ảnh (Collaborative task & Picture description).
+- Bắt buộc cung cấp:
+  + "audioScript": Lời hỏi trực tiếp của Giám khảo khảo thí Cambridge để hệ thống phát âm thanh đọc câu hỏi.
+  + "sampleAnswer": Câu trả lời mẫu xuất sắc từ thí sinh đạt điểm cao.
+  + "scoringRubric": Thang điểm phát âm, từ vựng, ngữ pháp và độ trôi chảy.
+`;
+  } else if (config.examType === 'comprehensive_4_skills') {
+    specializedSkillInstructions = `
+YÊU CẦU ĐẶC BIỆT CHO ĐỀ THI TOÀN DIỆN 4 KỸ NĂNG (COMPREHENSIVE 4-SKILLS):
+- Phải bao gồm đủ cả 4 kỹ năng chia theo từng Part rõ rệt:
+  + Part 1: LISTENING (Có audioScript lời thoại và câu hỏi trắc nghiệm A, B, C).
+  + Part 2: READING (Bài đọc hiểu chuyên sâu với câu hỏi trắc nghiệm và điền từ).
+  + Part 3: WRITING (Bài viết câu và viết email/đoạn văn ngắn có sampleAnswer).
+  + Part 4: SPEAKING (Câu hỏi phỏng vấn của giám khảo có audioScript và sampleAnswer).
+- Trả về "fullListeningScript" cho phần nghe.
+`;
+  } else if (config.examType === 'reading_and_writing') {
+    specializedSkillInstructions = `
+YÊU CẦU CHO ĐỀ THI ĐỌC & VIẾT KẾT HỢP (READING & WRITING CHUẨN KET/PET):
+- Part 1: Đọc thông báo ngắn / biển báo chọn đáp án đúng.
+- Part 2: Đọc hiểu bài văn và trả lời trắc nghiệm A, B, C.
+- Part 3: Điền từ vào đoạn văn (Open cloze).
+- Part 4: Viết câu & viết tin nhắn ngắn (có sampleAnswer).
+`;
+  } else {
+    specializedSkillInstructions = `
+YÊU CẦU CHO ĐỀ THI ĐỌC HIỂU & NGỮ PHÁP (READING & USE OF ENGLISH):
+- Part 1: Multiple choice short texts / notices (5 câu).
+- Part 2: Sentence gap-fill vocabulary & collocations in context (5 câu).
+- Part 3: Reading passage with multiple choice comprehension (5 câu).
+- Part 4: Open cloze / Grammar & Language focus (đến đủ số câu yêu cầu).
+`;
+  }
+
+  const prompt = `
+Bạn là Trưởng ban Khảo thí của Cambridge Assessment English (Item Writer & Senior Assessment Specialist).
+Hãy soạn một đề thi tiếng Anh CHUẨN ĐỊNH DẠNG CAMBRIDGE ASSESSMENT ENGLISH hoàn toàn MỚI, ĐỘC BẢN và KHÔNG TRÙNG LẶP.
+
+THÔNG TIN ĐỀ THI:
+- Mã định danh bài thi: ${examCode} (Seed: ${randomSeed})
+- Chủ đề ngữ cảnh bài thi lần này: "${randomThematicContext}"
+- Cấp độ bài thi: ${levelInfo.qualificationName} (Khung CEFR: ${levelInfo.targetCefr})
+- Phân môn / Kỹ năng trọng tâm: ${paperTitle}
+- Tổng số lượng câu hỏi mục tiêu: ${config.questionCount} câu.
+
+DỮ LIỆU BÀI HỌC GỐC ĐỂ KHAI THÁC TỪ VỰNG & NGỮ PHÁP:
+- Giáo trình: ${book.title} (Khối: ${book.gradeLevel || 'A1-B1'})
+- Chương: ${unit.title}
 - Các bài học được chọn: ${knowledge.topics.join('; ')}
-- Dữ liệu từ vựng & câu thực tế từ bài học:
+- Dữ liệu kiến thức đã học:
 ${knowledge.fullContextSummary}
 
-YÊU CẦU ĐỀ THI:
-- Cấp độ bài thi: ${levelInfo.qualificationName} (Khung CEFR: ${levelInfo.targetCefr})
-- Phân môn: ${paperTitle}
-- Tổng số câu hỏi: ${config.questionCount} câu hỏi trắc nghiệm (mỗi câu 1 điểm).
-- Chia thành các Part chuẩn Cambridge:
-  + Part 1: Multiple choice short texts / notices / context questions (5 câu).
-  + Part 2: Sentence gap-fill vocabulary & collocations in context (5 câu).
-  + Part 3: Reading passage with multiple choice comprehension (5 câu).
-  + Part 4: Cloze test / Grammar & Language focus (các câu còn lại đến đủ ${config.questionCount} câu).
+${specializedSkillInstructions}
 
-YÊU CẦU ĐỊNH DẠNG JSON:
-Trả về DUY NHẤT một đối tượng JSON hợp lệ theo cấu trúc sau, KHÔNG thêm bất kỳ giải thích ngoài:
+QUY TẮC ĐA DẠNG HÓA & TRÁNH TRÙNG LẶP:
+1. Mỗi lần tạo là một ngữ cảnh hoàn toàn mới, các tên nhân vật, tình huống thực tế và câu văn phải được sáng tạo mới mẻ 100%.
+2. Với bài Nghe (Listening) hoặc Nói (Speaking), BẮT BUỘC phải có trường "audioScript" chứa lời thoại tiếng Anh tự nhiên, phát âm chuẩn Anh - Anh hoặc Anh - Mỹ.
+3. Đáp án trắc nghiệm A, B, C, D phải được hoán vị ngẫu nhiên vị trí đúng (không được để dồn vào A).
+4. Phần giải thích ("explanation") phải sâu sắc, chỉ rõ từ vựng hoặc cấu trúc ngữ pháp liên quan đến bài học.
+
+YÊU CẦU ĐỊNH DẠNG JSON (TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON):
 {
   "title": "Tên bài thi",
+  "fullListeningScript": "Toàn bộ kịch bản nghe nếu có phần Listening, định dạng theo từng người nói (Narrator: ..., Boy: ..., Girl: ...)",
   "parts": [
     {
       "partNumber": 1,
-      "title": "Part 1",
-      "instructions": "For each question, choose the correct answer.",
-      "passage": "Đoạn văn ngắn nếu có, hoặc để trống",
+      "title": "Part 1: Listening / Reading / Writing / Speaking",
+      "instructions": "Lời dặn thí sinh...",
+      "partSkill": "listening hoặc reading hoặc writing hoặc speaking hoặc use_of_english",
+      "passage": "Đoạn văn đọc nếu có",
+      "audioScript": "Kịch bản âm thanh của phần này nếu là phần nghe/nói",
       "questions": [
         {
           "question": "Nội dung câu hỏi...",
-          "contextText": "Ngữ cảnh hoặc biển báo ngắn nếu có",
-          "options": ["Lựa chọn A", "Lựa chọn B", "Lựa chọn C", "Lựa chọn D"],
+          "contextText": "Ngữ cảnh hoặc đoạn trích nếu có",
+          "audioScript": "Lời thoại âm thanh riêng của câu này nếu có",
+          "options": ["A. Lựa chọn 1", "B. Lựa chọn 2", "C. Lựa chọn 3", "D. Lựa chọn 4"],
           "correctIndex": 0,
-          "explanation": "Giải thích chi tiết vì sao đáp án này đúng theo từ vựng/ngữ pháp của bài.",
-          "focusArea": "Tên kỹ năng (VD: Vocabulary - Appearance & Personality / Grammar - Present Simple)"
+          "explanation": "Giải thích chi tiết...",
+          "focusArea": "Kỹ năng / Từ vựng trọng tâm...",
+          "sampleAnswer": "Câu trả lời mẫu nếu là bài tự luận Writing hoặc Speaking",
+          "scoringRubric": "Tiêu chí chấm điểm nếu có"
         }
       ]
     }
@@ -247,80 +472,158 @@ Trả về DUY NHẤT một đối tượng JSON hợp lệ theo cấu trúc sau
 }
 `.trim();
 
-      const aiResponse = await callGeminiForCambridgeExam(prompt, userApiKey, userModel);
+  // Try calling the selected provider first, then fallback to other provider, then heuristic
+  let aiResponse: any = null;
 
-      if (aiResponse && Array.isArray(aiResponse.parts) && aiResponse.parts.length > 0) {
-        let questionCounter = 1;
-        const allQuestions: CambridgeQuestion[] = [];
-
-        const structuredParts: CambridgePart[] = aiResponse.parts.map((p: any, pIdx: number) => {
-          const questions: CambridgeQuestion[] = (p.questions || []).map((q: any) => {
-            const cambridgeQ: CambridgeQuestion = {
-              id: `camb-q-${Date.now()}-${questionCounter}`,
-              part: p.partNumber || pIdx + 1,
-              partTitle: p.title || `Part ${pIdx + 1}`,
-              instructions: p.instructions || 'Choose the best answer.',
-              contextText: q.contextText || undefined,
-              question: q.question,
-              options: Array.isArray(q.options) && q.options.length >= 3 ? q.options.slice(0, 4) : ['A', 'B', 'C', 'D'],
-              correctIndex: typeof q.correctIndex === 'number' && q.correctIndex >= 0 && q.correctIndex < 4 ? q.correctIndex : 0,
-              explanation: q.explanation || 'Đáp án chính xác theo tài liệu bài học.',
-              focusArea: q.focusArea || 'Language Focus',
-              mark: 1,
-            };
-            questionCounter += 1;
-            allQuestions.push(cambridgeQ);
-            return cambridgeQ;
-          });
-
-          return {
-            partNumber: p.partNumber || pIdx + 1,
-            title: p.title || `Part ${pIdx + 1}`,
-            instructions: p.instructions || 'Choose the best answer.',
-            passage: p.passage || undefined,
-            questions,
-          };
-        });
-
-        return {
-          id: `cambridge-exam-${Date.now()}`,
-          title: aiResponse.title || `${levelInfo.qualificationName} — ${paperTitle}`,
-          qualificationName: levelInfo.qualificationName,
-          levelBadge: levelInfo.badge,
-          paperName: paperTitle,
-          examCode,
-          timeMinutes: config.questionCount <= 10 ? 15 : config.questionCount <= 20 ? 30 : levelInfo.defaultTime,
-          totalMarks: allQuestions.length,
-          bookTitle: book.title,
-          unitTitle: unit.title,
-          lessonTitles: knowledge.topics,
-          parts: structuredParts,
-          questions: allQuestions,
-          instructionsToCandidates: [
-            'Write your name, centre number and candidate number in the spaces at the top of this page.',
-            'Answer all questions. Write your answers on the question paper.',
-            'Read the instructions for each part carefully before answering.',
-            'Dictionaries and electronic devices are NOT permitted.',
-          ],
-          informationForCandidates: [
-            `There are ${allQuestions.length} questions on this question paper.`,
-            'Each question carries one mark.',
-            `The total score for this paper is ${allQuestions.length} marks.`,
-          ],
-          generatedAt: new Date().toLocaleDateString('vi-VN', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-        };
-      }
-    } catch (err) {
-      console.warn('[Cambridge AI] Lỗi gọi Gemini, tự động chuyển sang chế độ tạo mẫu thông minh:', err);
+  if (selectedProvider === 'openai' && openaiKey && openaiKey.trim()) {
+    try {
+      aiResponse = await callOpenAiForCambridgeExam(prompt, openaiKey, openaiModel);
+      aiEngineName = `ChatGPT (${openaiModel || 'gpt-4o-mini'})`;
+    } catch (err: any) {
+      console.warn('[Cambridge AI] Lỗi gọi OpenAI, thử chuyển sang Gemini nếu có:', err.message);
     }
   }
 
-  // Fallback: Smart Pedagogical Cambridge Template Engine
-  return generateHeuristicCambridgeExam({
+  if (!aiResponse && geminiKey && geminiKey.trim()) {
+    try {
+      aiResponse = await callGeminiForCambridgeExam(prompt, geminiKey, geminiModel);
+      aiEngineName = `Google Gemini (${geminiModel || 'gemini-2.5-flash'})`;
+    } catch (err: any) {
+      console.warn('[Cambridge AI] Lỗi gọi Gemini:', err.message);
+    }
+  }
+
+  // If still no response and we haven't tried OpenAI yet
+  if (!aiResponse && selectedProvider !== 'openai' && openaiKey && openaiKey.trim()) {
+    try {
+      aiResponse = await callOpenAiForCambridgeExam(prompt, openaiKey, openaiModel);
+      aiEngineName = `ChatGPT (${openaiModel || 'gpt-4o-mini'})`;
+    } catch (err: any) {
+      console.warn('[Cambridge AI] Lỗi gọi OpenAI fallback:', err.message);
+    }
+  }
+
+  if (aiResponse && Array.isArray(aiResponse.parts) && aiResponse.parts.length > 0) {
+    let questionCounter = 1;
+    const allQuestions: CambridgeQuestion[] = [];
+    let hasListening = false;
+    let hasSpeaking = false;
+    let hasWriting = false;
+    let hasReading = false;
+
+    const structuredParts: CambridgePart[] = aiResponse.parts.map((p: any, pIdx: number) => {
+      const pSkill = p.partSkill || (
+        config.examType === 'listening' ? 'listening' :
+        config.examType === 'writing' ? 'writing' :
+        config.examType === 'speaking' ? 'speaking' : 'reading'
+      );
+
+      if (pSkill === 'listening' || p.audioScript) hasListening = true;
+      if (pSkill === 'speaking') hasSpeaking = true;
+      if (pSkill === 'writing') hasWriting = true;
+      if (pSkill === 'reading' || pSkill === 'use_of_english') hasReading = true;
+
+      const questions: CambridgeQuestion[] = (p.questions || []).map((q: any) => {
+        const isSpeakingOrWriting = pSkill === 'writing' || pSkill === 'speaking';
+        const rawOptions = Array.isArray(q.options) && q.options.length > 0
+          ? q.options
+          : isSpeakingOrWriting
+          ? []
+          : ['A', 'B', 'C', 'D'];
+
+        const cambridgeQ: CambridgeQuestion = {
+          id: `camb-q-${Date.now()}-${questionCounter}`,
+          part: p.partNumber || pIdx + 1,
+          partTitle: p.title || `Part ${pIdx + 1}`,
+          instructions: p.instructions || 'Choose the best answer.',
+          contextText: q.contextText || undefined,
+          audioScript: q.audioScript || undefined,
+          question: q.question || `Question ${questionCounter}`,
+          options: rawOptions,
+          correctIndex:
+            typeof q.correctIndex === 'number' && q.correctIndex >= 0 && q.correctIndex < rawOptions.length
+              ? q.correctIndex
+              : 0,
+          explanation: q.explanation || 'Đáp án chính xác theo tiêu chuẩn bài học.',
+          focusArea: q.focusArea || 'Language Focus',
+          mark: 1,
+          sampleAnswer: q.sampleAnswer || undefined,
+          scoringRubric: q.scoringRubric || undefined,
+          questionType: isSpeakingOrWriting
+            ? (pSkill === 'writing' ? 'short_writing' : 'speaking_prompt')
+            : 'multiple_choice',
+        };
+        questionCounter += 1;
+        allQuestions.push(cambridgeQ);
+        return cambridgeQ;
+      });
+
+      return {
+        partNumber: p.partNumber || pIdx + 1,
+        title: p.title || `Part ${pIdx + 1}`,
+        instructions: p.instructions || 'Follow the instructions carefully.',
+        passage: p.passage || undefined,
+        audioScript: p.audioScript || undefined,
+        partSkill: pSkill,
+        questions,
+      };
+    });
+
+    // Check overall listening script
+    let fullScript = aiResponse.fullListeningScript || '';
+    if (!fullScript && hasListening) {
+      fullScript = structuredParts
+        .filter((p) => p.audioScript || p.questions.some((q) => q.audioScript))
+        .map((p) => {
+          const partHeader = `--- ${p.title} ---\n${p.instructions}\n`;
+          const partBody = p.audioScript || p.questions.map((q) => q.audioScript).filter(Boolean).join('\n\n');
+          return `${partHeader}${partBody}`;
+        })
+        .join('\n\n');
+    }
+
+    return {
+      id: `cambridge-exam-${Date.now()}`,
+      title: aiResponse.title || `${levelInfo.qualificationName} — ${paperTitle}`,
+      qualificationName: levelInfo.qualificationName,
+      levelBadge: levelInfo.badge,
+      paperName: paperTitle,
+      examCode,
+      timeMinutes: config.questionCount <= 10 ? 20 : config.questionCount <= 20 ? 35 : levelInfo.defaultTime,
+      totalMarks: allQuestions.length,
+      bookTitle: book.title,
+      unitTitle: unit.title,
+      lessonTitles: knowledge.topics,
+      parts: structuredParts,
+      questions: allQuestions,
+      instructionsToCandidates: [
+        'Write your name, centre number and candidate number in the spaces at the top of this page.',
+        'Answer all questions. Write your answers on the question paper.',
+        'Read the instructions for each part carefully before answering.',
+        hasListening ? 'For the listening test, you will hear each recording twice.' : '',
+        'Dictionaries and electronic devices are NOT permitted.',
+      ].filter(Boolean),
+      informationForCandidates: [
+        `There are ${allQuestions.length} questions on this question paper.`,
+        'Each question carries one mark unless stated otherwise.',
+        `The total score for this paper is ${allQuestions.length} marks.`,
+      ],
+      generatedAt: new Date().toLocaleDateString('vi-VN', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+      hasListening: hasListening || config.examType === 'listening' || config.examType === 'comprehensive_4_skills',
+      hasSpeaking: hasSpeaking || config.examType === 'speaking' || config.examType === 'comprehensive_4_skills',
+      hasWriting: hasWriting || config.examType === 'writing' || config.examType === 'comprehensive_4_skills',
+      hasReading: hasReading || config.examType === 'reading' || config.examType === 'reading_and_use_of_english',
+      fullListeningScript: fullScript || undefined,
+      aiEngineUsed: aiEngineName,
+    };
+  }
+
+  // Fallback: Smart Pedagogical Dynamic Generator (completely varied every run)
+  return generateDynamicHeuristicCambridgeExam({
     book,
     unit,
     lessons,
@@ -329,13 +632,15 @@ Trả về DUY NHẤT một đối tượng JSON hợp lệ theo cấu trúc sau
     levelInfo,
     paperTitle,
     examCode,
+    thematicContext: randomThematicContext,
   });
 }
 
 /**
- * Bộ tạo đề thi Cambridge thông minh từ dữ liệu bài học khi không có kết nối internet hoặc API key
+ * Bộ tạo đề thi Cambridge thông minh ngoại tuyến:
+ * Tự động tạo ngữ cảnh mới, câu hỏi phong phú, kèm Audio Script nghe chân thực và câu hỏi đa kỹ năng
  */
-function generateHeuristicCambridgeExam({
+function generateDynamicHeuristicCambridgeExam({
   book,
   unit,
   lessons,
@@ -344,6 +649,7 @@ function generateHeuristicCambridgeExam({
   levelInfo,
   paperTitle,
   examCode,
+  thematicContext,
 }: {
   book: Book;
   unit: Unit;
@@ -353,242 +659,249 @@ function generateHeuristicCambridgeExam({
   levelInfo: ReturnType<typeof getCambridgeLevelDetails>;
   paperTitle: string;
   examCode: string;
+  thematicContext: string;
 }): CambridgeExam {
   const parts: CambridgePart[] = [];
   const allQuestions: CambridgeQuestion[] = [];
   let qNum = 1;
 
-  const vocabs = knowledge.vocabularies.length > 0 ? knowledge.vocabularies : [
-    { word: 'appearance', meaning: 'ngoại hình, vẻ bề ngoài' },
-    { word: 'personality', meaning: 'tính cách, phẩm chất' },
-    { word: 'friendly', meaning: 'thân thiện, cởi mở' },
-    { word: 'generous', meaning: 'hào phóng, rộng lượng' },
-    { word: 'dark hair', meaning: 'mái tóc đen sẫm' },
-    { word: 'tall', meaning: 'cao ráo' },
-    { word: 'boyfriend', meaning: 'bạn trai' },
-    { word: 'family member', meaning: 'thành viên trong gia đình' },
-  ];
+  // Shuffle vocabulary pool to avoid repetition
+  const rawVocabs = knowledge.vocabularies.length >= 4
+    ? [...knowledge.vocabularies].sort(() => 0.5 - Math.random())
+    : [
+        { word: 'appearance', meaning: 'ngoại hình, diện mạo' },
+        { word: 'personality', meaning: 'tính cách, phẩm chất' },
+        { word: 'friendly', meaning: 'thân thiện, hòa đồng' },
+        { word: 'generous', meaning: 'hào phóng, rộng lượng' },
+        { word: 'curly hair', meaning: 'mái tóc xoăn' },
+        { word: 'direction', meaning: 'phương hướng, chỉ đường' },
+        { word: 'tradition', meaning: 'truyền thống, phong tục' },
+        { word: 'custom', meaning: 'tập quán lâu đời' },
+        { word: 'celebration', meaning: 'lễ kỷ niệm, ngày hội' },
+        { word: 'creative', meaning: 'sáng tạo, giàu ý tưởng' },
+      ].sort(() => 0.5 - Math.random());
 
-  // Part 1: Vocabulary & Collocation in Context (5 questions)
-  const part1Questions: CambridgeQuestion[] = [];
-  const p1Target = Math.min(5, Math.floor(config.questionCount / 2));
-  for (let i = 0; i < p1Target; i++) {
-    const item = vocabs[i % vocabs.length]!;
-    const distractors = vocabs
-      .filter((v) => v.word !== item.word)
-      .map((v) => v.word)
-      .slice(0, 3);
-    const options = [item.word, ...distractors];
-    while (options.length < 4) options.push(`option-${options.length + 1}`);
-    // Shuffle options
-    const shuffled = options.sort(() => 0.5 - Math.random());
-    const correctIndex = shuffled.indexOf(item.word);
+  const isListening = config.examType === 'listening' || config.examType === 'listening_and_speaking' || config.examType === 'comprehensive_4_skills';
+  const isWriting = config.examType === 'writing' || config.examType === 'reading_and_writing' || config.examType === 'comprehensive_4_skills';
+  const isSpeaking = config.examType === 'speaking' || config.examType === 'comprehensive_4_skills';
 
-    const questionText = `Which word best matches the definition: "${item.meaning}"?`;
+  let fullAudioScript = '';
+
+  // 1. Part 1: Listening / Short Text Context
+  if (isListening) {
+    const p1Questions: CambridgeQuestion[] = [];
+    const scriptLines: string[] = [
+      `Narrator: Cambridge English Qualifications. ${levelInfo.qualificationName}. Listening Paper.`,
+      `Narrator: Theme: ${thematicContext}. You will hear each conversation twice.`,
+    ];
+
+    const count = Math.min(5, Math.max(3, Math.floor(config.questionCount / 4)));
+    for (let i = 0; i < count; i++) {
+      const vocab = rawVocabs[i % rawVocabs.length]!;
+      const names = ['Oliver', 'Emma', 'Lucas', 'Sophia', 'Jack', 'Mia'];
+      const speaker1 = names[i % names.length];
+      const speaker2 = names[(i + 1) % names.length];
+
+      const conversationScript = `Narrator: Question ${qNum}. Where are the students planning to meet?\n${speaker1}: Hi ${speaker2}, will we meet near the school gate or at the library for our project about ${vocab.word}?\n${speaker2}: Let's meet at the library near the park, so we can prepare our notes quietly.\nNarrator: Now listen again.\n${speaker1}: Hi ${speaker2}, will we meet near the school gate or at the library for our project about ${vocab.word}?\n${speaker2}: Let's meet at the library near the park, so we can prepare our notes quietly.`;
+
+      scriptLines.push(`\n${conversationScript}`);
+
+      const options = [
+        'At the school library near the park',
+        'In front of the main entrance gate',
+        'Inside the busy sports cafeteria',
+      ];
+      // Randomize correct option position
+      const correctIdx = Math.floor(Math.random() * 3);
+      if (correctIdx !== 0) {
+        const temp = options[0]!;
+        options[0] = options[correctIdx]!;
+        options[correctIdx] = temp;
+      }
+
+      const q: CambridgeQuestion = {
+        id: `camb-listen-${qNum}`,
+        part: 1,
+        partTitle: 'Part 1: Listening Comprehension',
+        instructions: 'Listen to the conversation and choose the correct answer (A, B or C).',
+        question: `Question ${qNum}: Where will the students meet for their discussion?`,
+        audioScript: conversationScript,
+        options,
+        correctIndex: correctIdx,
+        explanation: `Theo lời thoại của nhân vật ("Let's meet at the library near the park"), địa điểm chính xác là thư viện trường gần công viên.`,
+        focusArea: `Listening for specific information (${vocab.word})`,
+        mark: 1,
+      };
+      p1Questions.push(q);
+      allQuestions.push(q);
+      qNum += 1;
+    }
+
+    fullAudioScript = scriptLines.join('\n');
+    parts.push({
+      partNumber: 1,
+      title: 'Part 1: Listening Comprehension',
+      instructions: 'You will hear short conversations. For each question, choose the best answer.',
+      partSkill: 'listening',
+      audioScript: fullAudioScript,
+      questions: p1Questions,
+    });
+  }
+
+  // 2. Part 2: Reading Comprehension
+  const readingTarget = Math.min(5, Math.max(3, Math.floor(config.questionCount / 3)));
+  const p2Questions: CambridgeQuestion[] = [];
+  const samplePassage = `Welcome to the ${thematicContext}. This annual event brings together students and educators from across the region to celebrate cultural diversity, academic excellence, and teamwork. Participants will take part in engaging workshops focusing on ${rawVocabs.slice(0, 3).map((v) => v.word).join(', ')}, and collaborate on practical community initiatives. Please remember to arrive 15 minutes before the opening ceremony and wear your student badges at all times.`;
+
+  for (let i = 0; i < readingTarget; i++) {
+    const vocab = rawVocabs[(i + 2) % rawVocabs.length]!;
     const q: CambridgeQuestion = {
-      id: `camb-p1-${qNum}`,
-      part: 1,
-      partTitle: 'Part 1: Vocabulary in Context',
-      instructions: 'For each question, choose the best word (A, B, C or D) that matches the meaning.',
-      question: questionText,
-      options: shuffled,
-      correctIndex: correctIndex >= 0 ? correctIndex : 0,
-      explanation: `"${item.word}" mang nghĩa là "${item.meaning}", hoàn toàn chuẩn xác theo bài học ${knowledge.topics[0] || ''}.`,
-      focusArea: `Vocabulary Focus (${item.word})`,
+      id: `camb-read-${qNum}`,
+      part: parts.length + 1,
+      partTitle: `Part ${parts.length + 1}: Reading in Context`,
+      instructions: 'Read the informational article above and choose the best answer for each question.',
+      question: `According to the article about "${thematicContext}", what is the key purpose of the event?`,
+      options: [
+        `To encourage collaboration and develop understanding in ${vocab.word}.`,
+        'To organize a silent reading test without group participation.',
+        'To sell commercial products to overseas tourists.',
+        'To cancel all weekend extra-curricular activities.',
+      ],
+      correctIndex: 0,
+      explanation: `Đoạn văn nêu rõ mục tiêu là tôn vinh sự đa dạng học thuật và thúc đẩy sự hợp tác gắn với từ khóa ${vocab.word}.`,
+      focusArea: `Reading for gist and detail (${vocab.word})`,
       mark: 1,
     };
-    part1Questions.push(q);
+    p2Questions.push(q);
     allQuestions.push(q);
-    qNum++;
+    qNum += 1;
   }
 
   parts.push({
-    partNumber: 1,
-    title: 'Part 1: Vocabulary in Context',
-    instructions: 'For each question, choose the correct answer (A, B, C or D).',
-    questions: part1Questions,
+    partNumber: parts.length + 1,
+    title: `Part ${parts.length}: Reading Comprehension`,
+    instructions: 'Read the text and answer the questions that follow.',
+    passage: samplePassage,
+    partSkill: 'reading',
+    questions: p2Questions,
   });
 
-  // Part 2: Sentence Completion & Grammar (5 questions)
-  const part2Questions: CambridgeQuestion[] = [];
-  const p2Target = Math.min(5, config.questionCount - allQuestions.length);
-  const sampleGrammarPrompts = [
-    {
-      q: 'What ________ she look like? - She has curly dark hair and green eyes.',
-      opts: ['does', 'do', 'is', 'are'],
-      ans: 0,
-      exp: 'Sử dụng trợ động từ "does" với chủ ngữ số ít "she" trong câu hỏi miêu tả ngoại hình "What does she look like?".',
-      focus: 'Grammar: Present Simple (Questions)',
-    },
-    {
-      q: 'He isn’t very tall. He is ________ height with a short beard.',
-      opts: ['medium', 'long', 'heavy', 'huge'],
-      ans: 0,
-      exp: 'Cụm từ cố định chỉ chiều cao trung bình là "medium height".',
-      focus: 'Collocation: Describing Height',
-    },
-    {
-      q: 'They ________ lived in this city since 2020.',
-      opts: ['have', 'has', 'having', 'had'],
-      ans: 0,
-      exp: 'Chủ ngữ "They" đi với trợ động từ "have" trong thì hiện tại hoàn thành.',
-      focus: 'Grammar: Present Perfect',
-    },
-    {
-      q: 'She loves spending time helping other people. She is very ________.',
-      opts: ['generous', 'shy', 'lazy', 'impatient'],
-      ans: 0,
-      exp: '"generous" (hào phóng, tốt bụng) miêu tả người thích giúp đỡ và chia sẻ với người khác.',
-      focus: 'Vocabulary: Personality Adjectives',
-    },
-    {
-      q: 'Look at the picture! Who is the person standing ________ Mel and Adam?',
-      opts: ['between', 'among', 'across', 'through'],
-      ans: 0,
-      exp: 'Dùng giới từ "between" khi chỉ vị trí ở giữa hai người hoặc hai vật thể xác định.',
-      focus: 'Prepositions of Place',
-    },
-  ];
+  // 3. Part 3: Language Focus & Vocabulary Cloze
+  const clozeTarget = Math.max(3, config.questionCount - allQuestions.length - (isWriting ? 2 : 0) - (isSpeaking ? 2 : 0));
+  if (clozeTarget > 0) {
+    const p3Questions: CambridgeQuestion[] = [];
+    for (let i = 0; i < clozeTarget; i++) {
+      const vocab = rawVocabs[(i + 4) % rawVocabs.length]!;
+      const otherVocabs = rawVocabs.filter((v) => v.word !== vocab.word).map((v) => v.word);
+      const options = [vocab.word, otherVocabs[0] || 'different', otherVocabs[1] || 'similar', otherVocabs[2] || 'regular'];
+      
+      const correctIdx = Math.floor(Math.random() * 4);
+      if (correctIdx !== 0) {
+        const temp = options[0]!;
+        options[0] = options[correctIdx]!;
+        options[correctIdx] = temp;
+      }
 
-  for (let i = 0; i < p2Target; i++) {
-    const template = sampleGrammarPrompts[i % sampleGrammarPrompts.length]!;
-    const q: CambridgeQuestion = {
-      id: `camb-p2-${qNum}`,
-      part: 2,
-      partTitle: 'Part 2: Sentence Completion & Grammar',
-      instructions: 'Read the sentences and choose the best option (A, B, C or D) to complete each space.',
-      question: template.q,
-      options: template.opts,
-      correctIndex: template.ans,
-      explanation: template.exp,
-      focusArea: template.focus,
-      mark: 1,
-    };
-    part2Questions.push(q);
-    allQuestions.push(q);
-    qNum++;
-  }
+      const q: CambridgeQuestion = {
+        id: `camb-cloze-${qNum}`,
+        part: parts.length + 1,
+        partTitle: `Part ${parts.length + 1}: Language & Vocabulary Focus`,
+        instructions: 'Choose the word that best completes the sentence grammatically and contextually.',
+        question: `Sentence ${qNum}: A person who is always ready to share their time and help others is described as ______ (${vocab.meaning}).`,
+        options,
+        correctIndex: correctIdx,
+        explanation: `"${vocab.word}" là từ vựng chính xác mang ý nghĩa "${vocab.meaning}", phù hợp với ngữ cảnh câu.`,
+        focusArea: `Lexical Resource & Collocation (${vocab.word})`,
+        mark: 1,
+      };
+      p3Questions.push(q);
+      allQuestions.push(q);
+      qNum += 1;
+    }
 
-  if (part2Questions.length > 0) {
     parts.push({
-      partNumber: 2,
-      title: 'Part 2: Sentence Completion & Grammar',
-      instructions: 'Read the sentences. Choose the best word (A, B, C or D) for each space.',
-      questions: part2Questions,
+      partNumber: parts.length + 1,
+      title: `Part ${parts.length}: Language & Vocabulary Focus`,
+      instructions: 'For each sentence, choose the word which best fits the gap.',
+      partSkill: 'use_of_english',
+      questions: p3Questions,
     });
   }
 
-  // Part 3: Reading Comprehension (if more questions needed)
-  if (allQuestions.length < config.questionCount) {
-    const part3Questions: CambridgeQuestion[] = [];
-    const p3Target = Math.min(5, config.questionCount - allQuestions.length);
-    const passage =
-      knowledge.readingPassages[0] ||
-      `Sarah Harris is the deputy editor of British Vogue. When she was young, she started to go grey at a very early age. Today, grey hair is in fashion for both young and older people. Many fashion magazines report that people are embracing their natural appearance and feel proud of who they are.`;
-
-    const sampleReadingQuestions = [
+  // 4. Part 4: Writing Task (if requested)
+  if (isWriting) {
+    const writingVocab = rawVocabs[0]!;
+    const writingPartQuestions: CambridgeQuestion[] = [
       {
-        q: 'What is the main topic of the article?',
-        opts: [
-          'Embracing natural appearance and grey hair in modern fashion',
-          'How to dye hair at home easily',
-          'The career of fashion models in London',
-          'Why people dislike changing hairstyles',
-        ],
-        ans: 0,
-        exp: 'Bài đọc nhấn mạnh việc tóc bạc tự nhiên đang trở thành xu hướng thời trang tích cực.',
-        focus: 'Reading: Global Meaning',
-      },
-      {
-        q: 'According to the text, when did Sarah Harris notice her hair changing?',
-        opts: ['When she was young', 'After she retired', 'During the pandemic', 'Only last year'],
-        ans: 0,
-        exp: 'Dẫn chứng trong bài: "When she was young, she started to go grey at a very early age."',
-        focus: 'Reading: Specific Information',
-      },
-      {
-        q: 'How do people feel about their natural hair today according to fashion magazines?',
-        opts: [
-          'They feel confident and proud of their natural look',
-          'They feel anxious and want to hide it',
-          'They refuse to go to hair salons',
-          'They always dye their hair dark',
-        ],
-        ans: 0,
-        exp: 'Dẫn chứng: "...people are embracing their natural appearance and feel proud of who they are."',
-        focus: 'Reading: Detail & Attitude',
+        id: `camb-write-${qNum}`,
+        part: parts.length + 1,
+        partTitle: `Part ${parts.length + 1}: Writing Task`,
+        instructions: 'Read the email prompt and write a response of 35–50 words.',
+        question: `You received an email from your English friend, Alex, asking about your plans for "${thematicContext}". Write an email to Alex. In your email, describe what you will do, explain why you enjoy ${writingVocab.word}, and suggest a time to meet.`,
+        options: [],
+        correctIndex: 0,
+        explanation: 'Thí sinh cần trả lời đủ 3 ý, sử dụng đúng thì và vốn từ vựng phong phú.',
+        focusArea: 'Communicative Writing (Email / Short Message)',
+        mark: 5,
+        sampleAnswer: `Dear Alex,\nI'm so excited about the upcoming ${thematicContext}! I'm planning to join the group project on Wednesday. I really enjoy ${writingVocab.word} because it gives us a great chance to learn together. Can we meet at 3 p.m. at the library?\nBest,\nYour friend`,
+        scoringRubric: 'Content (5/5): All 3 points addressed. Communicative Achievement (5/5): Natural informal tone. Language (5/5): Good range of vocabulary and connectors.',
+        questionType: 'short_writing',
       },
     ];
-
-    for (let i = 0; i < p3Target; i++) {
-      const t = sampleReadingQuestions[i % sampleReadingQuestions.length]!;
-      const q: CambridgeQuestion = {
-        id: `camb-p3-${qNum}`,
-        part: 3,
-        partTitle: 'Part 3: Reading Comprehension',
-        instructions: 'Read the article and answer the questions that follow.',
-        question: t.q,
-        options: t.opts,
-        correctIndex: t.ans,
-        explanation: t.exp,
-        focusArea: t.focus,
-        mark: 1,
-      };
-      part3Questions.push(q);
-      allQuestions.push(q);
-      qNum++;
-    }
+    allQuestions.push(writingPartQuestions[0]!);
+    qNum += 1;
 
     parts.push({
-      partNumber: 3,
-      title: 'Part 3: Reading Comprehension',
-      instructions: 'Read the text below and choose the correct answer (A, B, C or D).',
-      passage,
-      questions: part3Questions,
+      partNumber: parts.length + 1,
+      title: `Part ${parts.length}: Guided Writing`,
+      instructions: 'Write your answer in the space provided on the question paper.',
+      partSkill: 'writing',
+      questions: writingPartQuestions,
     });
   }
 
-  // Part 4: Cloze test / Additional questions if user requested 20 or 25 questions
-  if (allQuestions.length < config.questionCount) {
-    const part4Questions: CambridgeQuestion[] = [];
-    const remaining = config.questionCount - allQuestions.length;
-
-    for (let i = 0; i < remaining; i++) {
-      const wordObj = vocabs[i % vocabs.length]!;
-      const q: CambridgeQuestion = {
-        id: `camb-p4-${qNum}`,
-        part: 4,
-        partTitle: 'Part 4: Language Use & Form',
-        instructions: 'Choose the correct form of the word to complete the blank.',
-        question: `He speaks very ________ when communicating with foreign guests.`,
-        options: ['politely', 'polite', 'politeness', 'impolite'],
+  // 5. Part 5: Speaking Interview Prompts (if requested)
+  if (isSpeaking) {
+    const speakingQuestions: CambridgeQuestion[] = [
+      {
+        id: `camb-speak-${qNum}`,
+        part: parts.length + 1,
+        partTitle: `Part ${parts.length + 1}: Speaking Interview`,
+        instructions: 'Listen to the examiner question and answer clearly with full sentences.',
+        question: `Examiner: "Now let's talk about your daily activities and interests. Can you tell me what you enjoy doing in your free time, especially regarding ${rawVocabs[1]?.word || 'creative hobbies'}?"`,
+        audioScript: `Examiner: Good morning. Now let's talk about your free time and hobbies. Can you tell me what you enjoy doing after school, especially regarding ${rawVocabs[1]?.word || 'creative projects'}?`,
+        options: [],
         correctIndex: 0,
-        explanation: 'Cần một trạng từ (Adverb) để bổ nghĩa cho động từ thường "speaks".',
-        focusArea: 'Word Formation & Grammar',
-        mark: 1,
-      };
-      part4Questions.push(q);
-      allQuestions.push(q);
-      qNum++;
-    }
+        explanation: 'Thí sinh phát âm rõ ràng, sử dụng câu ghép và mở rộng câu trả lời với lý do.',
+        focusArea: 'Spoken Interaction & Fluency',
+        mark: 5,
+        sampleAnswer: `In my free time, I really enjoy reading books and practicing ${rawVocabs[1]?.word || 'sports'} with my classmates. It helps me relax after intensive study sessions and keeps me energized for the whole week.`,
+        scoringRubric: 'Grammar and Vocabulary: Accurate structures. Pronunciation: Intelligible and natural rhythm. Interactive Communication: Quick response without hesitation.',
+        questionType: 'speaking_prompt',
+      },
+    ];
+    allQuestions.push(speakingQuestions[0]!);
+    qNum += 1;
 
     parts.push({
-      partNumber: 4,
-      title: 'Part 4: Language Use & Form',
-      instructions: 'For each question, choose the correct answer (A, B, C or D).',
-      questions: part4Questions,
+      partNumber: parts.length + 1,
+      title: `Part ${parts.length}: Speaking Interaction`,
+      instructions: 'Respond to the questions asked by the examiner.',
+      partSkill: 'speaking',
+      audioScript: speakingQuestions[0]?.audioScript,
+      questions: speakingQuestions,
     });
   }
 
   return {
     id: `cambridge-exam-${Date.now()}`,
-    title: config.customTitle || `${levelInfo.qualificationName} — ${paperTitle}`,
+    title: `${levelInfo.qualificationName} — ${paperTitle}`,
     qualificationName: levelInfo.qualificationName,
     levelBadge: levelInfo.badge,
     paperName: paperTitle,
     examCode,
-    timeMinutes: config.questionCount <= 10 ? 15 : config.questionCount <= 20 ? 30 : levelInfo.defaultTime,
-    totalMarks: allQuestions.length,
+    timeMinutes: config.questionCount <= 10 ? 20 : config.questionCount <= 20 ? 35 : levelInfo.defaultTime,
+    totalMarks: allQuestions.reduce((acc, q) => acc + (q.mark || 1), 0),
     bookTitle: book.title,
     unitTitle: unit.title,
     lessonTitles: knowledge.topics,
@@ -598,17 +911,23 @@ function generateHeuristicCambridgeExam({
       'Write your name, centre number and candidate number in the spaces at the top of this page.',
       'Answer all questions. Write your answers on the question paper.',
       'Read the instructions for each part carefully before answering.',
+      isListening ? 'For the listening test, you will hear each recording twice.' : '',
       'Dictionaries and electronic devices are NOT permitted.',
-    ],
+    ].filter(Boolean),
     informationForCandidates: [
-      `There are ${allQuestions.length} questions on this question paper.`,
-      'Each question carries one mark.',
-      `The total score for this paper is ${allQuestions.length} marks.`,
+      `There are ${allQuestions.length} items on this question paper.`,
+      `The total score for this paper is ${allQuestions.reduce((acc, q) => acc + (q.mark || 1), 0)} marks.`,
     ],
     generatedAt: new Date().toLocaleDateString('vi-VN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     }),
+    hasListening: isListening,
+    hasSpeaking: isSpeaking,
+    hasWriting: isWriting,
+    hasReading: true,
+    fullListeningScript: fullAudioScript || undefined,
+    aiEngineUsed: 'Smart Pedagogical Engine (Varied Mode)',
   };
 }

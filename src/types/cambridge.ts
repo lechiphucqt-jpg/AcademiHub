@@ -9,9 +9,18 @@ export type CambridgeLevel =
 
 export type CambridgeExamType =
   | 'reading_and_use_of_english'
+  | 'reading'
+  | 'writing'
+  | 'listening'
+  | 'speaking'
+  | 'reading_and_writing'
+  | 'listening_and_speaking'
+  | 'comprehensive_4_skills'
   | 'vocabulary_grammar_focus'
   | 'reading_comprehension'
   | 'cloze_and_sentence';
+
+export type AiProvider = 'gemini' | 'openai';
 
 export interface CambridgeQuestion {
   id: string;
@@ -25,6 +34,16 @@ export interface CambridgeQuestion {
   explanation: string;
   focusArea: string;
   mark: number;
+  audioScript?: string;
+  sampleAnswer?: string;
+  scoringRubric?: string;
+  questionType?:
+    | 'multiple_choice'
+    | 'gap_fill'
+    | 'open_cloze'
+    | 'sentence_transformation'
+    | 'short_writing'
+    | 'speaking_prompt';
 }
 
 export interface CambridgePart {
@@ -32,6 +51,8 @@ export interface CambridgePart {
   title: string;
   instructions: string;
   passage?: string;
+  audioScript?: string;
+  partSkill?: 'reading' | 'writing' | 'listening' | 'speaking' | 'use_of_english';
   questions: CambridgeQuestion[];
 }
 
@@ -52,6 +73,12 @@ export interface CambridgeExam {
   instructionsToCandidates: string[];
   informationForCandidates: string[];
   generatedAt: string;
+  hasListening?: boolean;
+  hasSpeaking?: boolean;
+  hasWriting?: boolean;
+  hasReading?: boolean;
+  fullListeningScript?: string;
+  aiEngineUsed?: string;
 }
 
 export interface CambridgeGeneratorConfig {
@@ -60,4 +87,7 @@ export interface CambridgeGeneratorConfig {
   questionCount: 10 | 15 | 20 | 25 | 40;
   customTitle?: string;
   includeExplanations: boolean;
+  provider?: AiProvider;
+  model?: string;
+  apiKey?: string;
 }
