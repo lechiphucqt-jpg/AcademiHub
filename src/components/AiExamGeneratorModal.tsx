@@ -37,6 +37,7 @@ import {
 } from '../utils/cambridgeExamExport';
 import {
   downloadAudioTranscriptFile,
+  downloadListeningAudioMp3,
   pauseCambridgeAudio,
   playCambridgeAudioScript,
   resumeCambridgeAudio,
@@ -111,6 +112,8 @@ export default function AiExamGeneratorModal({
   const [isAudioPaused, setIsAudioPaused] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState('');
   const [currentLineText, setCurrentLineText] = useState('');
+  const [isDownloadingAudio, setIsDownloadingAudio] = useState(false);
+  const [audioDownloadStatus, setAudioDownloadStatus] = useState('');
 
   // Initialize selection & AI state when opening
   useEffect(() => {
@@ -283,6 +286,46 @@ export default function AiExamGeneratorModal({
 
     downloadAudioTranscriptFile(generatedExam.title, script);
     onNotify('Đã tải kịch bản nghe (.txt) chuẩn Cambridge thành công!', 'success');
+  };
+
+  const handleDownloadAudioMp3 = async () => {
+    if (!generatedExam) return;
+    const script =
+      generatedExam.fullListeningScript ||
+      generatedExam.parts
+        .filter((p) => p.audioScript || p.questions.some((q) => q.audioScript))
+        .map(
+          (p) =>
+            `[${p.title}]\n${
+              p.audioScript ||
+              p.questions.map((q) => q.audioScript).filter(Boolean).join('\n')
+            }`
+        )
+        .join('\n\n');
+
+    if (!script || !script.trim()) {
+      onNotify('Không tìm thấy kịch bản âm thanh để xuất file nghe.', 'error');
+      return;
+    }
+
+    setIsDownloadingAudio(true);
+    try {
+      const activeKey =
+        aiProvider === 'openai' ? getSavedOpenAiApiKey() : getSavedApiKey();
+      await downloadListeningAudioMp3({
+        examTitle: generatedExam.title,
+        script,
+        apiKey: activeKey,
+        provider: aiProvider,
+        onStatusChange: (status) => setAudioDownloadStatus(status),
+      });
+      onNotify('Đã tải thành công file âm thanh bài nghe (.mp3 / .wav)!', 'success');
+    } catch (err: any) {
+      onNotify(`Lỗi tải file nghe: ${err.message || err}`, 'error');
+    } finally {
+      setIsDownloadingAudio(false);
+      setAudioDownloadStatus('');
+    }
   };
 
   // Export Handlers
@@ -759,6 +802,19 @@ export default function AiExamGeneratorModal({
                     <span>Xuất PDF</span>
                   </button>
 
+                  {(generatedExam.hasListening || generatedExam.fullListeningScript) && (
+                    <button
+                      type="button"
+                      disabled={isDownloadingAudio}
+                      onClick={handleDownloadAudioMp3}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                      title="Tải file âm thanh (.mp3) phần nghe chuẩn Cambridge về máy"
+                    >
+                      <Headphones className="w-4 h-4" />
+                      <span>{isDownloadingAudio ? 'Đang tạo audio...' : 'Tải Audio (.mp3)'}</span>
+                    </button>
+                  )}
+
                   {onSaveExamAsQuizToLesson && (
                     <button
                       type="button"
@@ -871,11 +927,31 @@ export default function AiExamGeneratorModal({
 
                       <button
                         type="button"
+                        disabled={isDownloadingAudio}
+                        onClick={handleDownloadAudioMp3}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer shadow-xs disabled:opacity-50 transition-colors"
+                        title="Tải file âm thanh (.mp3) phần nghe về máy tính"
+                      >
+                        {isDownloadingAudio ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>{audioDownloadStatus || 'Đang tạo MP3...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Tải file nghe (.mp3)</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={handleDownloadTranscript}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 text-xs cursor-pointer font-medium"
                         title="Tải kịch bản nghe file text .txt"
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        <FileText className="w-3.5 h-3.5" />
                         <span>Tải kịch bản (.txt)</span>
                       </button>
                     </div>
@@ -1047,14 +1123,35 @@ export default function AiExamGeneratorModal({
                       <Headphones className="w-4 h-4 text-amber-500" />
                       <span>Kịch bản âm thanh dành cho Giám thị / Giáo viên (Recording Script)</span>
                     </h4>
-                    <button
-                      type="button"
-                      onClick={handleDownloadTranscript}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 cursor-pointer font-medium"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Tải file .txt</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isDownloadingAudio}
+                        onClick={handleDownloadAudioMp3}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer font-bold disabled:opacity-50"
+                        title="Tải toàn bộ file âm thanh bài nghe (.mp3)"
+                      >
+                        {isDownloadingAudio ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>{audioDownloadStatus || 'Đang tạo...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Tải file nghe (.mp3)</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadTranscript}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 cursor-pointer font-medium"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Tải file .txt</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-2 font-mono leading-relaxed text-slate-800 dark:text-slate-200">

@@ -328,6 +328,119 @@ async function createServer() {
     }
   });
 
+  function splitIntoTtsChunks(text: string, maxLen = 160): string[] {
+    const lines = text.split(/\n+/);
+    const result: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.length <= maxLen) {
+        result.push(trimmed);
+      } else {
+        const parts = trimmed.match(/[^.?!;:]+[.?!;:]+|[^.?!;:]+$/g) || [trimmed];
+        let current = '';
+        for (const part of parts) {
+          if ((current + ' ' + part).trim().length <= maxLen) {
+            current = (current + ' ' + part).trim();
+          } else {
+            if (current) result.push(current);
+            current = part.trim();
+          }
+        }
+        if (current) result.push(current);
+      }
+    }
+    return result;
+  }
+
+  app.post('/api/ai/tts-download', async (req: Request, res: Response) => {
+    try {
+      const { script, apiKey, provider, examTitle } = req.body as {
+        script?: unknown;
+        apiKey?: unknown;
+        provider?: unknown;
+        examTitle?: unknown;
+      };
+
+      if (typeof script !== 'string' || !script.trim()) {
+        return res.status(400).json({ error: 'Kịch bản âm thanh trống.' });
+      }
+
+      const title = typeof examTitle === 'string' && examTitle.trim() ? examTitle.trim() : 'Cambridge_Exam';
+      const cleanKey = typeof apiKey === 'string' && apiKey.trim() ? apiKey.trim() : process.env.OPENAI_API_KEY;
+
+      // 1. If OpenAI provider or key available -> use OpenAI TTS
+      if (provider === 'openai' && cleanKey) {
+        try {
+          const openAiRes = await fetch('https://api.openai.com/v1/audio/speech', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${cleanKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'tts-1',
+              input: script.slice(0, 4000),
+              voice: 'onyx',
+              response_format: 'mp3',
+            }),
+          });
+          if (openAiRes.ok) {
+            const arrayBuffer = await openAiRes.arrayBuffer();
+            res.setHeader('Content-Type', 'audio/mpeg');
+            res.setHeader(
+              'Content-Disposition',
+              `attachment; filename="${encodeURIComponent(title)}_Listening.mp3"`
+            );
+            return res.send(Buffer.from(arrayBuffer));
+          }
+        } catch (e) {
+          console.warn('[OpenAI TTS] Lỗi gọi OpenAI, chuyển sang Google TTS:', e);
+        }
+      }
+
+      // 2. High Quality British English Multi-chunk Google TTS (Free, en-GB, no API key needed)
+      const chunks = splitIntoTtsChunks(script, 160);
+      const buffers: Buffer[] = [];
+
+      for (const chunk of chunks) {
+        if (!chunk.trim()) continue;
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en-GB&client=tw-ob&q=${encodeURIComponent(
+          chunk.trim()
+        )}`;
+        const ttsRes = await fetch(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            Referer: 'https://translate.google.com/',
+          },
+        });
+        if (ttsRes.ok) {
+          const buf = Buffer.from(await ttsRes.arrayBuffer());
+          buffers.push(buf);
+        }
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
+      if (buffers.length > 0) {
+        const combined = Buffer.concat(buffers);
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${encodeURIComponent(title)}_Listening.mp3"`
+        );
+        return res.send(combined);
+      }
+
+      return res.status(502).json({ error: 'Không thể tổng hợp file âm thanh lúc này.' });
+    } catch (err: any) {
+      console.error('[TTS Download Error]', err);
+      return res.status(500).json({ error: err.message || 'Lỗi xử lý tạo file âm thanh.' });
+    }
+  });
+
   const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {
