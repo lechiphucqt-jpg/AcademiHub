@@ -1,8 +1,25 @@
-import React, { useState } from 'react';
-import { ArrowRight, BookOpen, Code2, Dices, FileText, FolderPlus, HelpCircle, Orbit, Pencil, Plus } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowRight,
+  BookOpen,
+  Camera,
+  Code2,
+  Dices,
+  FileText,
+  FolderPlus,
+  HelpCircle,
+  ImagePlus,
+  Link,
+  Orbit,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import type { Book, ContentType, Lesson, SelectionPath, Unit } from '../types/academic';
 import { computeCurriculumStats } from '../utils/portableBundle';
 import type { EditTarget } from './EditNodeModal';
+import { optimizeAndEncodeImage } from '../utils/imageUtils';
 
 interface BookOverviewProps {
   books: Book[];
@@ -15,6 +32,7 @@ interface BookOverviewProps {
   onAddContent: (bookId: string, unitId: string, lessonId: string) => void;
   onAskAiForLesson: (contextPrompt: string) => void;
   onEditNode: (target: EditTarget) => void;
+  onUpdateBookCover?: (bookId: string, coverImage: string) => void;
 }
 
 function contentTypeLabel(type: ContentType): string {
@@ -35,6 +53,10 @@ function contentTypeIcon(type: ContentType) {
 
 function CoverArt({ src, title, subject }: { src: string; title: string; subject: string }) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   if (!src || failed) {
     return (
@@ -59,6 +81,222 @@ function CoverArt({ src, title, subject }: { src: string; title: string; subject
   );
 }
 
+interface BookCoverFrameProps {
+  book: Book;
+  onUpdateCover?: (bookId: string, coverImage: string) => void;
+  className?: string;
+}
+
+function BookCoverFrame({ book, onUpdateCover, className = '' }: BookCoverFrameProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showUrlDialog, setShowUrlDialog] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFile = async (file: File) => {
+    if (!onUpdateCover) return;
+    setIsUploading(true);
+    try {
+      const dataUrl = await optimizeAndEncodeImage(file);
+      onUpdateCover(book.id, dataUrl);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Lỗi xử lý ảnh bìa.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const handleApplyUrl = () => {
+    if (!urlInput.trim() || !onUpdateCover) return;
+    onUpdateCover(book.id, urlInput.trim());
+    setShowUrlDialog(false);
+    setUrlInput('');
+  };
+
+  const handleRemoveCover = () => {
+    if (!onUpdateCover) return;
+    onUpdateCover(book.id, '');
+  };
+
+  return (
+    <div className={`space-y-2.5 ${className}`}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) handleFile(file);
+        }}
+        className="hidden"
+      />
+
+      {/* 3:4 Book Frame */}
+      <div
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        className={`aspect-[3/4] w-44 md:w-full rounded-2xl overflow-hidden border-2 transition-all relative group shadow-md ${
+          isDragging
+            ? 'border-indigo-500 ring-4 ring-indigo-500/30 scale-[1.02]'
+            : 'border-slate-200 dark:border-slate-800'
+        }`}
+      >
+        <CoverArt src={book.coverImage} title={book.title} subject={book.subject} />
+
+        {/* Hover / Drag Overlay with Quick Action Buttons */}
+        {onUpdateCover && (
+          <div
+            className={`absolute inset-0 bg-slate-950/75 backdrop-blur-xs flex flex-col items-center justify-center p-3 text-white transition-opacity duration-200 gap-2 ${
+              isHovered || isDragging ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
+          >
+            {isUploading ? (
+              <div className="text-center space-y-2">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                <span className="text-xs font-semibold">Đang nén ảnh...</span>
+              </div>
+            ) : isDragging ? (
+              <div className="text-center space-y-1">
+                <Upload className="w-8 h-8 mx-auto text-indigo-400 animate-bounce" />
+                <div className="text-xs font-bold">Thả ảnh vào đây</div>
+                <div className="text-[10px] text-slate-300">Tự động đặt làm bìa sách</div>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>{book.coverImage ? 'Đổi ảnh bìa' : 'Chèn ảnh bìa'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowUrlDialog(true)}
+                  className="w-full py-1.5 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium border border-white/20 cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Link className="w-3.5 h-3.5" />
+                  <span>Dán link URL</span>
+                </button>
+
+                {book.coverImage && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveCover}
+                    className="w-full py-1 px-3 rounded-lg text-red-300 hover:text-white hover:bg-red-600/80 text-[11px] font-medium cursor-pointer flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa ảnh bìa</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Action buttons under the frame for easy clickability */}
+      {onUpdateCover && (
+        <div className="flex items-center gap-1.5 w-44 md:w-full">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 py-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+            title="Tải ảnh bìa sách từ máy tính"
+          >
+            <Camera className="w-3.5 h-3.5 text-indigo-500" />
+            <span>{book.coverImage ? 'Đổi bìa' : 'Chèn bìa'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowUrlDialog(true)}
+            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 cursor-pointer"
+            title="Dán link ảnh online"
+          >
+            <Link className="w-3.5 h-3.5" />
+          </button>
+
+          {book.coverImage && (
+            <button
+              type="button"
+              onClick={handleRemoveCover}
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-red-50 dark:hover:bg-red-950 text-slate-400 hover:text-red-600 cursor-pointer"
+              title="Xóa ảnh bìa"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* URL Input Popover/Modal */}
+      {showUrlDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Link className="w-4 h-4 text-indigo-500" />
+                <span>Nhập URL ảnh bìa sách</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowUrlDialog(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <input
+              type="url"
+              autoFocus
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://example.com/cover.jpg"
+              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowUrlDialog(false)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={!urlInput.trim()}
+                onClick={handleApplyUrl}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 cursor-pointer"
+              >
+                Áp dụng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BookOverview({
   books,
   selection,
@@ -70,6 +308,7 @@ export default function BookOverview({
   onAddContent,
   onAskAiForLesson,
   onEditNode,
+  onUpdateBookCover,
 }: BookOverviewProps) {
   const activeBook = books.find((b) => b.id === selection.bookId) ?? null;
   const activeUnit: Unit | null = activeBook?.units.find((u) => u.id === selection.unitId) ?? null;
@@ -400,9 +639,7 @@ export default function BookOverview({
     return (
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-8 pb-8 border-b border-slate-200 dark:border-slate-800 items-start">
-          <div className="aspect-[3/4] w-44 md:w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">
-            <CoverArt src={activeBook.coverImage} title={activeBook.title} subject={activeBook.subject} />
-          </div>
+          <BookCoverFrame book={activeBook} onUpdateCover={onUpdateBookCover} />
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
               <span>{activeBook.subject}</span>
@@ -426,6 +663,7 @@ export default function BookOverview({
                     initialGrade: activeBook.gradeLevel,
                     initialAuthor: activeBook.author,
                     initialDescription: activeBook.description,
+                    initialCoverImage: activeBook.coverImage,
                   })
                 }
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
@@ -678,13 +916,37 @@ export default function BookOverview({
                 key={book.id}
                 className="group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden flex flex-col transition-colors hover:border-slate-300 dark:hover:border-slate-700"
               >
-                <button
-                  type="button"
-                  onClick={() => onSelect({ bookId: book.id, unitId: null, lessonId: null, contentId: null })}
-                  className="aspect-[16/10] w-full overflow-hidden bg-slate-100 dark:bg-slate-800 cursor-pointer text-left relative"
-                >
-                  <CoverArt src={book.coverImage} title={book.title} subject={book.subject} />
-                </button>
+                <div className="aspect-[16/10] w-full overflow-hidden bg-slate-100 dark:bg-slate-800 relative group/cover">
+                  <button
+                    type="button"
+                    onClick={() => onSelect({ bookId: book.id, unitId: null, lessonId: null, contentId: null })}
+                    className="w-full h-full cursor-pointer text-left"
+                  >
+                    <CoverArt src={book.coverImage} title={book.title} subject={book.subject} />
+                  </button>
+                  {onUpdateBookCover && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditNode({
+                          level: 'book',
+                          ids: { bookId: book.id, unitId: null, lessonId: null, contentId: null },
+                          initialTitle: book.title,
+                          initialSubject: book.subject,
+                          initialGrade: book.gradeLevel,
+                          initialAuthor: book.author,
+                          initialDescription: book.description,
+                          initialCoverImage: book.coverImage,
+                        });
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-900 text-white opacity-0 group-hover/cover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                      title="Chèn / Đổi ảnh bìa sách"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
                 <div className="p-5 flex-1 flex flex-col justify-between gap-4">
                   <div className="space-y-2">

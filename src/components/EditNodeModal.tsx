@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Pencil, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ImagePlus, Pencil, Trash2, Upload, X } from 'lucide-react';
 import type { SelectionPath } from '../types/academic';
+import { optimizeAndEncodeImage } from '../utils/imageUtils';
 
 export type EditTarget =
   | {
@@ -11,6 +12,7 @@ export type EditTarget =
       initialGrade?: string;
       initialAuthor?: string;
       initialDescription?: string;
+      initialCoverImage?: string;
     }
   | {
       level: 'unit';
@@ -44,6 +46,7 @@ interface EditNodeModalProps {
       subject?: string;
       gradeLevel?: string;
       author?: string;
+      coverImage?: string;
       estimatedMinutes?: number;
     }
   ) => void;
@@ -56,7 +59,11 @@ export default function EditNodeModal({ target, onClose, onSave }: EditNodeModal
   const [subject, setSubject] = useState('');
   const [gradeLevel, setGradeLevel] = useState('');
   const [author, setAuthor] = useState('');
+  const [coverImage, setCoverImage] = useState('');
   const [estimatedMinutes, setEstimatedMinutes] = useState(8);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!target) return;
@@ -66,6 +73,7 @@ export default function EditNodeModal({ target, onClose, onSave }: EditNodeModal
       setGradeLevel(target.initialGrade || '');
       setAuthor(target.initialAuthor || '');
       setDescription(target.initialDescription || '');
+      setCoverImage(target.initialCoverImage || '');
     } else if (target.level === 'unit') {
       setDescription(target.initialDescription || '');
     } else if (target.level === 'lesson') {
@@ -74,6 +82,21 @@ export default function EditNodeModal({ target, onClose, onSave }: EditNodeModal
       setEstimatedMinutes(target.initialMinutes || 8);
     }
   }, [target]);
+
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setIsUploadingCover(true);
+    try {
+      const dataUrl = await optimizeAndEncodeImage(file);
+      setCoverImage(dataUrl);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Lỗi tải ảnh');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
 
   if (!target) return null;
 
@@ -88,6 +111,7 @@ export default function EditNodeModal({ target, onClose, onSave }: EditNodeModal
         gradeLevel: gradeLevel.trim() || undefined,
         author: author.trim() || undefined,
         description: description.trim() || undefined,
+        coverImage: coverImage.trim(),
       });
     } else if (target.level === 'unit') {
       onSave('unit', target.ids, {
@@ -214,6 +238,79 @@ export default function EditNodeModal({ target, onClose, onSave }: EditNodeModal
                   placeholder="Giới thiệu mục tiêu của sách..."
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 leading-relaxed resize-none"
                 />
+              </div>
+
+              <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <ImagePlus className="w-4 h-4 text-indigo-500" />
+                    <span>Ảnh bìa sách (Ảnh đại diện)</span>
+                  </label>
+                  {coverImage && (
+                    <button
+                      type="button"
+                      onClick={() => setCoverImage('')}
+                      className="text-[11px] text-red-500 hover:text-red-600 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Xóa ảnh bìa</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-4 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60">
+                  {/* Thumbnail Preview */}
+                  <div className="w-20 aspect-[3/4] rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-200 dark:bg-slate-800 shrink-0 flex items-center justify-center shadow-xs">
+                    {coverImage ? (
+                      <img
+                        src={coverImage}
+                        alt="Xem trước bìa sách"
+                        className="w-full h-full object-cover"
+                        onError={() => setCoverImage('')}
+                      />
+                    ) : (
+                      <div className="text-center p-2 text-[10px] text-slate-400">
+                        Chưa có ảnh bìa
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2.5">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverFileUpload}
+                      className="hidden"
+                    />
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingCover}
+                        className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isUploadingCover ? 'Đang nén ảnh...' : 'Tải ảnh từ máy tính'}</span>
+                      </button>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                        Hỗ trợ PNG, JPG, JPEG, WEBP. Ảnh được tự động tối ưu sắc nét và vừa khung 3:4.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Hoặc dán URL ảnh trực tuyến:</div>
+                      <input
+                        type="url"
+                        value={coverImage}
+                        onChange={(e) => setCoverImage(e.target.value)}
+                        placeholder="https://.../cover.jpg"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           )}

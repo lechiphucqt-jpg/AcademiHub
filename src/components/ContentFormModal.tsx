@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { ImagePlus, Loader2, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import type { Book, ContentType, DetailedContent, Lesson, Unit } from '../types/academic';
+import { optimizeAndEncodeImage } from '../utils/imageUtils';
 
 export type ModalTarget =
   | { kind: 'book' }
@@ -62,6 +63,25 @@ export default function ContentFormModal({
   const [gradeLevel, setGradeLevel] = useState('Lớp 10 THPT');
   const [author, setAuthor] = useState('Tổ Chuyên môn');
   const [description, setDescription] = useState('');
+  const [coverImage, setCoverImage] = useState('');
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const coverFileRef = useRef<HTMLInputElement | null>(null);
+
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setIsUploadingCover(true);
+    try {
+      const dataUrl = await optimizeAndEncodeImage(file);
+      setCoverImage(dataUrl);
+      onNotify('Đã tải ảnh bìa thành công!', 'success');
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Lỗi tải ảnh', 'error');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
 
   // Lesson fields
   const [objectivesText, setObjectivesText] = useState('');
@@ -157,7 +177,7 @@ export default function ContentFormModal({
         gradeLevel: gradeLevel.trim() || 'Tổng quát',
         author: author.trim() || 'Biên soạn nội bộ',
         description: description.trim() || 'Sách học thuật tương tác được quản trị theo cấu trúc 4 cấp.',
-        coverImage: '',
+        coverImage: coverImage.trim(),
       });
     } else if (target.kind === 'unit') {
       onCreateUnit(target.bookId, {
@@ -260,35 +280,93 @@ export default function ContentFormModal({
           </div>
 
           {target.kind === 'book' && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Môn học</label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Môn học</label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Cấp độ / Lớp</label>
+                  <input
+                    type="text"
+                    value={gradeLevel}
+                    onChange={(e) => setGradeLevel(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Tác giả / Nhóm</label>
+                  <input
+                    type="text"
+                    value={author}
+                    onChange={(e) => setAuthor(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Cấp độ / Lớp</label>
-                <input
-                  type="text"
-                  value={gradeLevel}
-                  onChange={(e) => setGradeLevel(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
+
+              {/* Book Cover Uploader */}
+              <div className="space-y-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <ImagePlus className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Ảnh bìa sách (Ảnh đại diện)</span>
+                  </label>
+                  {coverImage && (
+                    <button
+                      type="button"
+                      onClick={() => setCoverImage('')}
+                      className="text-[11px] text-red-500 hover:text-red-600 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Xóa ảnh</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="w-16 aspect-[3/4] rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-200 dark:bg-slate-800 shrink-0 flex items-center justify-center">
+                    {coverImage ? (
+                      <img src={coverImage} alt="Xem trước bìa" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-[9px] text-slate-400 text-center px-1">Chưa có ảnh</span>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <input
+                      ref={coverFileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverFileUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => coverFileRef.current?.click()}
+                      disabled={isUploadingCover}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingCover ? 'Đang nén ảnh...' : 'Tải ảnh bìa từ máy tính'}</span>
+                    </button>
+                    <input
+                      type="url"
+                      value={coverImage}
+                      onChange={(e) => setCoverImage(e.target.value)}
+                      placeholder="Hoặc dán URL ảnh trực tuyến..."
+                      className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Tác giả / Nhóm</label>
-                <input
-                  type="text"
-                  value={author}
-                  onChange={(e) => setAuthor(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-            </div>
+            </>
           )}
 
           <div className="space-y-1.5">

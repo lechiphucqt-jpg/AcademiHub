@@ -330,6 +330,7 @@ export default function App() {
       subject?: string;
       gradeLevel?: string;
       author?: string;
+      coverImage?: string;
       estimatedMinutes?: number;
     }
   ) => {
@@ -346,6 +347,7 @@ export default function App() {
                   ...(data.subject !== undefined && { subject: data.subject }),
                   ...(data.gradeLevel !== undefined && { gradeLevel: data.gradeLevel }),
                   ...(data.author !== undefined && { author: data.author }),
+                  ...(data.coverImage !== undefined && { coverImage: data.coverImage }),
                   updatedAt: new Date().toISOString(),
                 }
               : b
@@ -418,6 +420,16 @@ export default function App() {
     const levelName =
       level === 'book' ? 'sách' : level === 'unit' ? 'chương' : level === 'lesson' ? 'bài học' : 'học liệu';
     notify(`Đã cập nhật tên ${levelName} "${data.title}" thành công!`, 'success');
+  };
+
+  const handleUpdateBookCover = (bookId: string, coverImage: string) => {
+    setHubState((prev) => ({
+      ...prev,
+      books: prev.books.map((b) =>
+        b.id === bookId ? { ...b, coverImage, updatedAt: new Date().toISOString() } : b
+      ),
+    }));
+    notify('Đã cập nhật ảnh bìa sách thành công!', 'success');
   };
 
   const handleDeleteNode = (
@@ -502,6 +514,14 @@ export default function App() {
 
   const handleChangeBranding = (branding: BrandingConfig) => {
     setHubState((prev) => ({ ...prev, branding }));
+  };
+
+  const handleReorderBooks = (newBooks: Book[]) => {
+    setHubState((prev) => ({
+      ...prev,
+      books: newBooks,
+    }));
+    notify('Đã cập nhật thứ tự sách thành công!', 'success');
   };
 
   const handlePrimaryHeaderAction = () => {
@@ -642,6 +662,7 @@ export default function App() {
               }
               onDeleteNode={handleDeleteNode}
               onEditNode={setEditTarget}
+              onReorderBooks={handleReorderBooks}
             />
 
             <div className="flex-1 min-w-0">
@@ -673,6 +694,7 @@ export default function App() {
                     setActiveSection('ai');
                   }}
                   onEditNode={setEditTarget}
+                  onUpdateBookCover={handleUpdateBookCover}
                 />
               )}
             </div>

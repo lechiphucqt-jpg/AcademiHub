@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   BookOpen,
   ChevronDown,
   ChevronRight,
@@ -7,6 +10,7 @@ import {
   Dices,
   FileText,
   Folder,
+  GripVertical,
   HelpCircle,
   Layers,
   Orbit,
@@ -28,6 +32,7 @@ interface HierarchySidebarProps {
   onAddContent: (bookId: string, unitId: string, lessonId: string) => void;
   onDeleteNode: (level: 'book' | 'unit' | 'lesson' | 'content', ids: SelectionPath, title: string) => void;
   onEditNode: (target: EditTarget) => void;
+  onReorderBooks?: (newBooks: Book[]) => void;
 }
 
 function getContentIcon(type: ContentType) {
@@ -48,8 +53,13 @@ export default function HierarchySidebar({
   onAddContent,
   onDeleteNode,
   onEditNode,
+  onReorderBooks,
 }: HierarchySidebarProps) {
   const [query, setQuery] = useState('');
+  const [draggedBookId, setDraggedBookId] = useState<string | null>(null);
+  const [dragOverBookId, setDragOverBookId] = useState<string | null>(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
   const [expandedBooks, setExpandedBooks] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     books.forEach((b, idx) => {
@@ -73,6 +83,78 @@ export default function HierarchySidebar({
   });
 
   const normalizedQuery = query.trim().toLowerCase();
+
+  const handleMoveBook = (bookId: string, direction: 'up' | 'down') => {
+    if (!onReorderBooks) return;
+    const currentIndex = books.findIndex((b) => b.id === bookId);
+    if (currentIndex === -1) return;
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= books.length) return;
+
+    const newBooks = [...books];
+    const [moved] = newBooks.splice(currentIndex, 1);
+    newBooks.splice(targetIndex, 0, moved);
+    onReorderBooks(newBooks);
+  };
+
+  const handleDragStart = (e: React.DragEvent, bookId: string) => {
+    setDraggedBookId(bookId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', bookId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, bookId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverBookId !== bookId) {
+      setDragOverBookId(bookId);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetBookId: string) => {
+    e.preventDefault();
+    setDragOverBookId(null);
+    if (!draggedBookId || draggedBookId === targetBookId || !onReorderBooks) {
+      setDraggedBookId(null);
+      return;
+    }
+
+    const sourceIndex = books.findIndex((b) => b.id === draggedBookId);
+    const targetIndex = books.findIndex((b) => b.id === targetBookId);
+
+    if (sourceIndex === -1 || targetIndex === -1) {
+      setDraggedBookId(null);
+      return;
+    }
+
+    const newBooks = [...books];
+    const [moved] = newBooks.splice(sourceIndex, 1);
+    newBooks.splice(targetIndex, 0, moved);
+    onReorderBooks(newBooks);
+    setDraggedBookId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedBookId(null);
+    setDragOverBookId(null);
+  };
+
+  const handleSortAlphabetically = (direction: 'asc' | 'desc') => {
+    if (!onReorderBooks) return;
+    const sorted = [...books].sort((a, b) => {
+      const cmp = a.title.localeCompare(b.title, 'vi', { numeric: true, sensitivity: 'base' });
+      return direction === 'asc' ? cmp : -cmp;
+    });
+    onReorderBooks(sorted);
+    setShowSortMenu(false);
+  };
+
+  const handleReverseOrder = () => {
+    if (!onReorderBooks) return;
+    const reversed = [...books].slice().reverse();
+    onReorderBooks(reversed);
+    setShowSortMenu(false);
+  };
 
   const filteredBooks = useMemo(() => {
     if (!normalizedQuery) return books;
@@ -159,21 +241,79 @@ export default function HierarchySidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-        <button
-          type="button"
-          onClick={() => onSelect({ bookId: null, unitId: null, lessonId: null, contentId: null })}
-          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-            selection.bookId === null
-              ? 'hub-accent-soft-bg hub-accent-text'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70'
-          }`}
-        >
-          <span className="flex items-center gap-2 truncate">
-            <Layers className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Tất cả Sách Học thuật</span>
-          </span>
-          <span className="tabular-nums text-[11px] opacity-75">{books.length}</span>
-        </button>
+        {/* All Books Header & Sort Actions */}
+        <div className="relative">
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors bg-slate-50 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => onSelect({ bookId: null, unitId: null, lessonId: null, contentId: null })}
+              className={`flex-1 flex items-center justify-between min-w-0 pr-2 cursor-pointer ${
+                selection.bookId === null
+                  ? 'hub-accent-text font-semibold'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span className="flex items-center gap-2 truncate">
+                <Layers className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                <span className="truncate">Tất cả Sách Học thuật</span>
+              </span>
+              <span className="tabular-nums text-[11px] px-1.5 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                {books.length}
+              </span>
+            </button>
+
+            {onReorderBooks && books.length > 1 && (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowSortMenu((prev) => !prev)}
+                  title="Sắp xếp danh sách Sách"
+                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                </button>
+
+                {showSortMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-20"
+                      onClick={() => setShowSortMenu(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1.5 z-30 text-xs">
+                      <div className="px-3 py-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                        Sắp xếp thứ tự Sách
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSortAlphabetically('asc')}
+                        className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer flex items-center gap-2"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Sắp xếp A → Z (Tiêu đề)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSortAlphabetically('desc')}
+                        className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer flex items-center gap-2"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Sắp xếp Z → A (Tiêu đề)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleReverseOrder}
+                        className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer flex items-center gap-2 border-t border-slate-100 dark:border-slate-800 mt-1 pt-1.5"
+                      >
+                        <ArrowUpDown className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Đảo ngược thứ tự</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         {filteredBooks.length === 0 ? (
           <div className="px-3 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -183,17 +323,46 @@ export default function HierarchySidebar({
           filteredBooks.map((book) => {
             const isBookOpen = normalizedQuery ? true : !!expandedBooks[book.id];
             const isBookSelected = selection.bookId === book.id && !selection.unitId;
+            const bookIndex = books.findIndex((b) => b.id === book.id);
+            const isFirst = bookIndex === 0;
+            const isLast = bookIndex === books.length - 1;
+            const isDragging = draggedBookId === book.id;
+            const isDragOver = dragOverBookId === book.id;
 
             return (
-              <div key={book.id} className="space-y-0.5">
+              <div
+                key={book.id}
+                className={`space-y-0.5 transition-all ${
+                  isDragging ? 'opacity-40 scale-[0.98]' : ''
+                } ${
+                  isDragOver ? 'border-t-2 border-indigo-500 rounded-xs pt-0.5' : ''
+                }`}
+                onDragOver={(e) => {
+                  if (!normalizedQuery) handleDragOver(e, book.id);
+                }}
+                onDrop={(e) => {
+                  if (!normalizedQuery) handleDrop(e, book.id);
+                }}
+              >
                 {/* Level 1: Book */}
                 <div
+                  draggable={!normalizedQuery}
+                  onDragStart={(e) => handleDragStart(e, book.id)}
+                  onDragEnd={handleDragEnd}
                   className={`group flex items-center gap-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
                     isBookSelected
                       ? 'hub-accent-soft-bg hub-accent-text font-semibold'
                       : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/70 font-medium'
                   }`}
                 >
+                  {!normalizedQuery && onReorderBooks && books.length > 1 && (
+                    <span
+                      title="Kéo thả để sắp xếp thứ tự sách"
+                      className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-1 shrink-0"
+                    >
+                      <GripVertical className="w-3.5 h-3.5" />
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleBook(book.id)}
@@ -214,6 +383,36 @@ export default function HierarchySidebar({
                     <span className="truncate">{book.title}</span>
                   </button>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                    {!normalizedQuery && onReorderBooks && books.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveBook(book.id, 'up')}
+                          disabled={isFirst}
+                          title={isFirst ? 'Đã ở vị trí đầu tiên' : 'Di chuyển sách lên trên'}
+                          className={`p-1 rounded transition-colors cursor-pointer ${
+                            isFirst
+                              ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                              : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+                          }`}
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveBook(book.id, 'down')}
+                          disabled={isLast}
+                          title={isLast ? 'Đã ở vị trí cuối cùng' : 'Di chuyển sách xuống dưới'}
+                          className={`p-1 rounded transition-colors cursor-pointer ${
+                            isLast
+                              ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                              : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+                          }`}
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() =>
@@ -225,6 +424,7 @@ export default function HierarchySidebar({
                           initialGrade: book.gradeLevel,
                           initialAuthor: book.author,
                           initialDescription: book.description,
+                          initialCoverImage: book.coverImage,
                         })
                       }
                       title="Sửa tên & thông tin Sách"
